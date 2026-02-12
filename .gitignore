@@ -1,26 +1,77 @@
-# Flutter/Dart
-# Build outputs (exclude to save space)
-/build/
-/.dart_tool/
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
 .packages
 .pub-cache/
 .pub/
+/build/
 
-# IDE
-.vscode/
-.idea/
-*.iml
+# Symbolication related
+app.*.symbols
 
-# OS Files
-.DS_Store
-Thumbs.db
+# Obfuscation related
+app.*.map.json
 
-# Logs
-*.log
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Web related
+/build/web/
+
+# Android related
+*.jks
+*.keystore
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/gradle/
+android/.idea/
+
+# iOS related
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Pods/
+ios/.symlinks/
+ios/Runner.xcworkspace/
+
+# Environment files
+.env
+.env.*
 
 # Temporary files
 *.tmp
 *.temp
-
-# Keep lib/ directory for source code!
-
+/tmp/
+nohup.out
+flutter.log
+flutter2.log
+server.log
