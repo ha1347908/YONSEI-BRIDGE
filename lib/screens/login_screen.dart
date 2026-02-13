@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
@@ -32,25 +33,213 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
 
-      // Simulate login process
-      await Future.delayed(const Duration(seconds: 1));
+      try {
+        final username = _usernameController.text.trim();
+        final password = _passwordController.text;
 
-      // In a real app, you would verify credentials here
-      final authService = Provider.of<AuthService>(context, listen: false);
-      await authService.login(
-        _usernameController.text,
-        _usernameController.text,
-        _rememberMe,
-      );
+        // Demo accounts (hardcoded for testing)
+        final demoAccounts = {
+          'admin': {
+            'password': 'admin123',
+            'name': 'System Administrator',
+            'status': 'Approved',
+            'role': 'Admin',
+          },
+          'testuser': {
+            'password': 'test123',
+            'name': '테스트 사용자',
+            'status': 'Approved',
+            'role': 'User',
+          },
+          'pending_user': {
+            'password': 'pending123',
+            'name': '대기 중 사용자',
+            'status': 'Pending',
+            'role': 'User',
+          },
+        };
 
-      setState(() {
-        _isLoading = false;
-      });
+        // Check if account exists
+        if (!demoAccounts.containsKey(username)) {
+          // Check local storage for custom registered users
+          final prefs = await SharedPreferences.getInstance();
+          final storedUser = prefs.getString('demo_user_$username');
+          final storedPassword = prefs.getString('demo_password_$username');
+          final storedStatus = prefs.getString('demo_status_$username');
+          final storedName = prefs.getString('demo_name_$username');
+          
+          if (storedUser == null) {
+            throw Exception('User not found. Please sign up first.');
+          }
+          
+          if (storedPassword != password) {
+            throw Exception('Incorrect password');
+          }
+          
+          // Check status for custom users
+          if (storedStatus == 'Pending') {
+            setState(() {
+              _isLoading = false;
+            });
+            
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Approval Pending'),
+                  content: const Text(
+                    'Your account is awaiting administrator approval.\n\n'
+                    'Please wait 1-2 days for approval.\n\n'
+                    'You will be notified once your account is approved.',
+                  ),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          
+          if (storedStatus == 'Blocked') {
+            final blockReason = prefs.getString('demo_block_reason_$username');
+            setState(() {
+              _isLoading = false;
+            });
+            
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Account Blocked'),
+                  content: Text(
+                    'Your account has been blocked by the administrator.\n\n'
+                    'Reason: ${blockReason ?? "Not specified"}\n\n'
+                    'Please contact the administrator for more information.',
+                  ),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          
+          if (storedStatus == 'Rejected') {
+            final rejectionReason = prefs.getString('demo_rejection_reason_$username');
+            setState(() {
+              _isLoading = false;
+            });
+            
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Account Rejected'),
+                  content: Text(
+                    'Your account registration has been rejected.\n\n'
+                    'Reason: ${rejectionReason ?? "Not specified"}\n\n'
+                    'Please contact the administrator or register again with correct information.',
+                  ),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          
+          // Custom user approved, login
+          final authService = Provider.of<AuthService>(context, listen: false);
+          await authService.login(username, storedName ?? username, _rememberMe);
+          
+        } else {
+          // Demo account
+          final account = demoAccounts[username]!;
+          
+          // Verify password
+          if (account['password'] != password) {
+            throw Exception('Incorrect password');
+          }
+          
+          // Check status
+          if (account['status'] == 'Pending') {
+            setState(() {
+              _isLoading = false;
+            });
+            
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Approval Pending'),
+                  content: const Text(
+                    'Your account is awaiting administrator approval.\n\n'
+                    'Please wait 1-2 days for approval.\n\n'
+                    'You will be notified once your account is approved.',
+                  ),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          
+          // User is approved, proceed with login
+          final authService = Provider.of<AuthService>(context, listen: false);
+          await authService.login(
+            username,
+            account['name']!,
+            _rememberMe,
+          );
+        }
 
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Login failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -81,17 +270,51 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Logo
-                    Image.asset(
-                      'assets/images/yonsei_bridge_logo.png',
-                      width: 180,
-                      height: 180,
+                    // Logo with rounded corners
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Image.asset(
+                          'assets/images/yonsei_bridge_logo.png',
+                          width: 180,
+                          height: 180,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 20),
-                    // Slogan
-                    Image.asset(
-                      'assets/images/slogan.png',
-                      width: 250,
+                    // Slogan with rounded corners
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 8,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Image.asset(
+                          'assets/images/slogan.png',
+                          width: 250,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 40),
                     // Login card
@@ -108,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
-                                '로그인',
+                                'Login',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -118,13 +341,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               TextFormField(
                                 controller: _usernameController,
                                 decoration: const InputDecoration(
-                                  labelText: '아이디',
+                                  labelText: 'Username',
                                   prefixIcon: Icon(Icons.person),
                                   border: OutlineInputBorder(),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return '아이디를 입력해주세요';
+                                    return 'Please enter your username';
                                   }
                                   return null;
                                 },
@@ -134,7 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
-                                  labelText: '비밀번호',
+                                  labelText: 'Password',
                                   prefixIcon: const Icon(Icons.lock),
                                   suffixIcon: IconButton(
                                     icon: Icon(
@@ -152,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return '비밀번호를 입력해주세요';
+                                    return 'Please enter your password';
                                   }
                                   return null;
                                 },
@@ -168,7 +391,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       });
                                     },
                                   ),
-                                  const Text('기기에 로그인 정보 저장하기'),
+                                  const Text('Remember me on this device'),
                                 ],
                               ),
                               const SizedBox(height: 16),
@@ -193,7 +416,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           ),
                                         )
                                       : const Text(
-                                          '로그인',
+                                          'Login',
                                           style: TextStyle(fontSize: 16),
                                         ),
                                 ),
@@ -216,7 +439,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ),
                                   child: const Text(
-                                    '회원가입',
+                                    'Sign Up',
                                     style: TextStyle(fontSize: 16),
                                   ),
                                 ),

@@ -1,34 +1,113 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../services/storage_service.dart';
+import '../services/auth_service.dart';
 import 'board_screen.dart';
 
-class PostDetailScreen extends StatelessWidget {
+class PostDetailScreen extends StatefulWidget {
   final Post post;
 
   const PostDetailScreen({super.key, required this.post});
 
   @override
+  State<PostDetailScreen> createState() => _PostDetailScreenState();
+}
+
+class _PostDetailScreenState extends State<PostDetailScreen> {
+  Future<void> _deletePost() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('게시글 삭제'),
+        content: const Text('정말로 이 게시글을 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final postsKey = 'posts_${widget.post.categoryId}';
+        final postsJson = prefs.getString(postsKey) ?? '[]';
+        final List<dynamic> postsList = jsonDecode(postsJson);
+        
+        // Remove the post
+        postsList.removeWhere((p) => p['post_id'] == widget.post.id);
+        
+        // Save back
+        await prefs.setString(postsKey, jsonEncode(postsList));
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('게시글이 삭제되었습니다'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true); // Return true to indicate deletion
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('게시글 삭제 실패: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
-    final isSaved = storageService.isPostSaved(post.id);
+    final authService = Provider.of<AuthService>(context);
+    final isSaved = storageService.isPostSaved(widget.post.id);
+    
+    // Check if current user can delete this post
+    final currentUserId = authService.currentUserId;
+    final isAdmin = currentUserId == 'admin';
+    final isAuthor = currentUserId == widget.post.authorId;
+    final canDelete = isAdmin || isAuthor;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('게시글'),
         actions: [
+          if (canDelete)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: _deletePost,
+              tooltip: '삭제',
+            ),
           IconButton(
             icon: Icon(
               isSaved ? Icons.bookmark : Icons.bookmark_border,
             ),
             onPressed: () {
               if (isSaved) {
-                storageService.removeSavedPost(post.id);
+                storageService.removeSavedPost(widget.post.id);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('저장이 취소되었습니다')),
                 );
               } else {
-                storageService.savePost(post.id, post.toMap());
+                storageService.savePost(widget.post.id, widget.post.toMap());
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('게시글이 저장되었습니다')),
                 );
@@ -45,7 +124,7 @@ class PostDetailScreen extends StatelessWidget {
             children: [
               // Title
               Text(
-                post.title,
+                widget.post.title,
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -56,7 +135,7 @@ class PostDetailScreen extends StatelessWidget {
               // Author and date
               Row(
                 children: [
-                  if (post.isAdminPost)
+                  if (widget.post.isAdminPost)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -83,7 +162,7 @@ class PostDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    post.author,
+                    widget.post.author,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
@@ -91,7 +170,7 @@ class PostDetailScreen extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    _formatDate(post.createdAt),
+                    _formatDate(widget.post.createdAt),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
@@ -103,7 +182,7 @@ class PostDetailScreen extends StatelessWidget {
               
               // Content
               Text(
-                post.content,
+                widget.post.content,
                 style: const TextStyle(
                   fontSize: 16,
                   height: 1.6,
@@ -111,11 +190,11 @@ class PostDetailScreen extends StatelessWidget {
               ),
               
               // Images (if any)
-              if (post.imageUrls != null && post.imageUrls!.isNotEmpty)
+              if (widget.post.imageUrls != null && widget.post.imageUrls!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 16.0),
                   child: Column(
-                    children: post.imageUrls!
+                    children: widget.post.imageUrls!
                         .map(
                           (url) => Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),

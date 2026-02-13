@@ -63,9 +63,18 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
       
       final pdf = pw.Document();
       
-      String getTranslation(String key) {
-        return _getTranslations()[currentLanguage]?[key] ?? 
+      String getTranslation(String key, String lang) {
+        return _getTranslations()[lang]?[key] ?? 
                _getTranslations()['ko']?[key] ?? key;
+      }
+      
+      // Helper function to create bilingual text (User Language | Korean)
+      String getBilingualText(String key) {
+        if (currentLanguage == 'ko') {
+          return getTranslation(key, 'ko');
+        } else {
+          return '${getTranslation(key, currentLanguage)} | ${getTranslation(key, 'ko')}';
+        }
       }
       
       // PDF 생성
@@ -81,72 +90,72 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  getTranslation('title'),
-                  style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, font: ttf),
+                  getBilingualText('title'),
+                  style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, font: ttf),
                 ),
-                pw.SizedBox(height: 16),
+                pw.SizedBox(height: 12),
                 pw.Container(
-                  padding: const pw.EdgeInsets.all(12),
+                  padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
                     color: PdfColors.blue50,
                     border: pw.Border.all(color: PdfColors.blue),
                   ),
                   child: pw.Text(
-                    getTranslation('doctor_instruction'),
-                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, font: ttf),
+                    getBilingualText('doctor_instruction'),
+                    style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, font: ttf),
                   ),
                 ),
                 pw.Divider(),
-                pw.SizedBox(height: 16),
+                pw.SizedBox(height: 12),
                 
                 // 기본 정보
-                _buildPDFSection(getTranslation('basic_info'), ttf),
-                _buildPDFRow(getTranslation('name'), _nameController.text, ttf),
-                _buildPDFRow(getTranslation('birth_date'), 
+                _buildPDFSection(getBilingualText('basic_info'), ttf),
+                _buildPDFRow(getBilingualText('name'), _nameController.text, ttf),
+                _buildPDFRow(getBilingualText('birth_date'), 
                   _birthDate != null ? DateFormat('yyyy-MM-dd').format(_birthDate!) : '', ttf),
-                _buildPDFRow(getTranslation('gender'), 
-                  getTranslation(_gender == 'male' ? 'male' : 'female'), ttf),
-                pw.SizedBox(height: 12),
+                _buildPDFRow(getBilingualText('gender'), 
+                  getBilingualText(_gender == 'male' ? 'male' : 'female'), ttf),
+                pw.SizedBox(height: 10),
                 
                 // 방문 목적
-                _buildPDFSection(getTranslation('purpose'), ttf),
-                _buildPDFRow(getTranslation('pain_areas'), 
-                  _painAreas.map((e) => getTranslation(e)).join(', '), ttf),
+                _buildPDFSection(getBilingualText('purpose'), ttf),
+                _buildPDFRow(getBilingualText('pain_areas'), 
+                  _painAreas.map((e) => getBilingualText(e)).join(', '), ttf),
                 if (_painAreas.contains('other') && _painAreaOtherController.text.isNotEmpty)
-                  _buildPDFRow(getTranslation('other'), _painAreaOtherController.text, ttf),
-                _buildPDFRow(getTranslation('symptom_start'), getTranslation(_symptomStart), ttf),
-                _buildPDFRow(getTranslation('pain_level'), '${_painLevel.toInt()}/10', ttf),
-                pw.SizedBox(height: 12),
+                  _buildPDFRow(getBilingualText('other'), _painAreaOtherController.text, ttf),
+                _buildPDFRow(getBilingualText('symptom_start'), getBilingualText(_symptomStart), ttf),
+                _buildPDFRow(getBilingualText('pain_level'), '${_painLevel.toInt()}/10', ttf),
+                pw.SizedBox(height: 10),
                 
                 // 상세 증상
-                _buildPDFSection(getTranslation('symptoms'), ttf),
+                _buildPDFSection(getBilingualText('symptoms'), ttf),
                 if (_respiratorySymptoms.isNotEmpty)
-                  _buildPDFRow(getTranslation('respiratory'), 
-                    _respiratorySymptoms.map((e) => getTranslation(e)).join(', '), ttf),
+                  _buildPDFRow(getBilingualText('respiratory'), 
+                    _respiratorySymptoms.map((e) => getBilingualText(e)).join(', '), ttf),
                 if (_digestiveSymptoms.isNotEmpty)
-                  _buildPDFRow(getTranslation('digestive'), 
-                    _digestiveSymptoms.map((e) => getTranslation(e)).join(', '), ttf),
+                  _buildPDFRow(getBilingualText('digestive'), 
+                    _digestiveSymptoms.map((e) => getBilingualText(e)).join(', '), ttf),
                 if (_painSymptoms.isNotEmpty)
-                  _buildPDFRow(getTranslation('pain_other'), 
-                    _painSymptoms.map((e) => getTranslation(e)).join(', '), ttf),
-                pw.SizedBox(height: 12),
+                  _buildPDFRow(getBilingualText('pain_other'), 
+                    _painSymptoms.map((e) => getBilingualText(e)).join(', '), ttf),
+                pw.SizedBox(height: 10),
                 
                 // 과거력
-                _buildPDFSection(getTranslation('medical_history'), ttf),
-                _buildPDFRow(getTranslation('taking_medicine'), 
-                  _takingMedicine ? (_medicineController.text.isNotEmpty ? _medicineController.text : getTranslation('yes')) : getTranslation('no'), ttf),
-                _buildPDFRow(getTranslation('has_allergy'), 
-                  _hasAllergy ? (_allergyController.text.isNotEmpty ? _allergyController.text : getTranslation('yes')) : getTranslation('no'), ttf),
+                _buildPDFSection(getBilingualText('medical_history'), ttf),
+                _buildPDFRow(getBilingualText('taking_medicine'), 
+                  _takingMedicine ? (_medicineController.text.isNotEmpty ? _medicineController.text : getBilingualText('yes')) : getBilingualText('no'), ttf),
+                _buildPDFRow(getBilingualText('has_allergy'), 
+                  _hasAllergy ? (_allergyController.text.isNotEmpty ? _allergyController.text : getBilingualText('yes')) : getBilingualText('no'), ttf),
                 if (_gender == 'female' && _pregnant != null)
-                  _buildPDFRow(getTranslation('pregnant'), _pregnant! ? getTranslation('yes') : getTranslation('no'), ttf),
-                pw.SizedBox(height: 12),
+                  _buildPDFRow(getBilingualText('pregnant'), _pregnant! ? getBilingualText('yes') : getBilingualText('no'), ttf),
+                pw.SizedBox(height: 10),
                 
                 // 협조 요청
                 if (_specialRequests.isNotEmpty) ...[
-                  _buildPDFSection(getTranslation('special_requests'), ttf),
+                  _buildPDFSection(getBilingualText('special_requests'), ttf),
                   pw.Text(
-                    _specialRequests.map((e) => '• ${getTranslation(e)}').join('\n'),
-                    style: pw.TextStyle(font: ttf, fontSize: 11),
+                    _specialRequests.map((e) => '• ${getBilingualText(e)}').join('\n'),
+                    style: pw.TextStyle(font: ttf, fontSize: 10),
                   ),
                 ],
               ],
@@ -164,25 +173,25 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
 
   pw.Widget _buildPDFSection(String title, pw.Font font) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 8),
+      padding: const pw.EdgeInsets.only(bottom: 6),
       child: pw.Text(
         title,
-        style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, font: font),
+        style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, font: font),
       ),
     );
   }
 
   pw.Widget _buildPDFRow(String label, String value, pw.Font font) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 4),
+      padding: const pw.EdgeInsets.only(bottom: 3),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(
-            width: 150,
-            child: pw.Text('$label:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, font: font, fontSize: 11)),
+          pw.Container(
+            width: 180,
+            child: pw.Text('$label:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, font: font, fontSize: 10)),
           ),
-          pw.Expanded(child: pw.Text(value, style: pw.TextStyle(font: font, fontSize: 11))),
+          pw.Expanded(child: pw.Text(value, style: pw.TextStyle(font: font, fontSize: 10))),
         ],
       ),
     );
@@ -193,7 +202,6 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
       'ko': {
         'title': '연세브릿지 안심진료 증상카드',
         'doctor_instruction': '👨‍⚕️ 의사 선생님께 이 화면을 보여주세요',
-        'title': '연세브릿지 안심진료 증상카드',
         'basic_info': '1. 기본 정보',
         'name': '성함',
         'birth_date': '생년월일',
@@ -247,6 +255,10 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         'explain_english': '의학 용어는 영어로도 설명해 주세요',
         'use_translator': '번역기(앱)를 사용하여 소통하고 싶습니다',
         'write_instructions': '처방전이나 주의사항을 메모(글자)로 적어주세요',
+        'save_pdf': 'PDF로 저장하기',
+        'pdf_tip': '💡 PDF를 병원에 가져가서 의사 선생님께 보여주세요',
+        'current_language': '현재 언어',
+        'change_language_tip': '설정에서 언어를 변경할 수 있습니다.',
       },
       'en': {
         'title': 'Yonsei Bridge Medical Symptom Card',
@@ -304,6 +316,10 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         'explain_english': 'Please explain medical terms in English',
         'use_translator': "I'd like to use a translator app",
         'write_instructions': 'Please write down the instructions',
+        'save_pdf': 'Save as PDF',
+        'pdf_tip': '💡 Take this PDF to the hospital and show it to your doctor',
+        'current_language': 'Current Language',
+        'change_language_tip': 'You can change the language in Settings.',
       },
       'zh': {
         'title': '延世桥梁 安心诊疗症状卡',
@@ -361,6 +377,10 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         'explain_english': '请用英语解释医学术语',
         'use_translator': '我想通过翻译软件进行沟通',
         'write_instructions': '请将注意事项以文字形式写下来',
+        'save_pdf': '保存为PDF',
+        'pdf_tip': '💡 请将此PDF带到医院给医生查看',
+        'current_language': '当前语言',
+        'change_language_tip': '您可以在设置中更改语言。',
       },
       'ja': {
         'title': '延世ブリッジ 安心診療症状カード',
@@ -418,6 +438,10 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         'explain_english': '医学用語は英語でも説明してください',
         'use_translator': '翻訳アプリを使って意思疎通をしたいです',
         'write_instructions': '注意事項をメモ(文字)で書いてください',
+        'save_pdf': 'PDFとして保存',
+        'pdf_tip': '💡 このPDFを病院に持って行き、医師にお見せください',
+        'current_language': '現在の言語',
+        'change_language_tip': '設定で言語を変更できます。',
       },
     };
   }
@@ -455,7 +479,7 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '현재 언어: ${_getLanguageName(currentLanguage)}\n설정에서 언어를 변경할 수 있습니다.',
+                      '${_getTranslation('current_language', currentLanguage)}: ${_getLanguageName(currentLanguage)}\n${_getTranslation('change_language_tip', currentLanguage)}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -628,18 +652,19 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.picture_as_pdf, size: 28),
-                label: const Text(
-                  'PDF로 저장하기',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                label: Text(
+                  _getTranslation('save_pdf', currentLanguage),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
             
             const SizedBox(height: 16),
-            const Center(
+            Center(
               child: Text(
-                '💡 PDF를 병원에 가져가서 의사 선생님께 보여주세요',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                _getTranslation('pdf_tip', currentLanguage),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                textAlign: TextAlign.center,
               ),
             ),
             
@@ -680,7 +705,8 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         validator: required
             ? (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return '$label을(를) 입력해주세요';
+                  final lang = Provider.of<LanguageService>(context, listen: false).currentLanguage;
+                  return lang == 'ko' ? '$label을(를) 입력해주세요' : 'Please enter $label';
                 }
                 return null;
               }

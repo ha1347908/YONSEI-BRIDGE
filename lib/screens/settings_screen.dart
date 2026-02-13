@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import 'login_screen.dart';
+import 'terms_of_service_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'admin_approval_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,15 +16,16 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _handleLogout() async {
+    final languageService = Provider.of<LanguageService>(context, listen: false);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('로그아웃'),
-        content: const Text('로그아웃 하시겠습니까?'),
+        title: Text(languageService.translate('logout')),
+        content: Text(languageService.translate('logout_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(languageService.translate('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -29,7 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('로그아웃'),
+            child: Text(languageService.translate('logout')),
           ),
         ],
       ),
@@ -49,18 +53,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _handleDeleteAccount() async {
+    final languageService = Provider.of<LanguageService>(context, listen: false);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('회원 탈퇴'),
-        content: const Text(
-          '정말로 탈퇴하시겠습니까?\n\n'
-          '모든 데이터가 삭제되며, 복구할 수 없습니다.',
-        ),
+        title: Text(languageService.translate('delete_account')),
+        content: Text(languageService.translate('delete_account_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(languageService.translate('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -68,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('탈퇴'),
+            child: Text(languageService.translate('delete')),
           ),
         ],
       ),
@@ -80,7 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('회원 탈퇴가 완료되었습니다')),
+          SnackBar(content: Text(languageService.translate('delete_account_complete'))),
         );
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -97,7 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('설정'),
+        title: Text(languageService.translate('settings')),
         backgroundColor: const Color(0xFF0038A8),
         foregroundColor: Colors.white,
       ),
@@ -151,11 +153,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             // Settings sections
             const SizedBox(height: 16),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
-                '앱 설정',
-                style: TextStyle(
+                languageService.translate('app_settings'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
@@ -165,13 +167,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(Icons.language),
-              title: const Text('언어 설정'),
+              title: Text(languageService.translate('language')),
               subtitle: Text(_getLanguageName(languageService.currentLanguage)),
               onTap: () async {
                 await showDialog(
                   context: context,
                   builder: (dialogContext) => AlertDialog(
-                    title: const Text('언어 선택'),
+                    title: Text(languageService.translate('language_select')),
                     content: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -184,7 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (mounted) {
                               Navigator.pop(dialogContext);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('언어가 변경되었습니다')),
+                                SnackBar(content: Text(languageService.translate('language_changed'))),
                               );
                             }
                           },
@@ -198,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (mounted) {
                               Navigator.pop(dialogContext);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Language changed')),
+                                SnackBar(content: Text(languageService.translate('language_changed'))),
                               );
                             }
                           },
@@ -212,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (mounted) {
                               Navigator.pop(dialogContext);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('语言已更改')),
+                                SnackBar(content: Text(languageService.translate('language_changed'))),
                               );
                             }
                           },
@@ -226,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (mounted) {
                               Navigator.pop(dialogContext);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('言語が変更されました')),
+                                SnackBar(content: Text(languageService.translate('language_changed'))),
                               );
                             }
                           },
@@ -240,22 +242,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(Icons.notifications),
-              title: const Text('알림 설정'),
-              subtitle: const Text('푸시 알림 관리'),
+              title: Text(languageService.translate('notification_settings')),
+              subtitle: Text(languageService.translate('push_notification_manage')),
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('알림 설정 - 준비 중')),
+                  SnackBar(content: Text('${languageService.translate('notification_settings')} - ${languageService.translate('coming_soon')}')),
                 );
               },
             ),
             
             const Divider(),
             
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            // Admin Section (only for admin users)
+            if (authService.currentUserId == 'admin') ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Text(
+                  '관리자',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF0038A8)),
+                title: const Text('회원 승인 관리'),
+                subtitle: const Text('가입 신청 승인/거부'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+                  );
+                },
+              ),
+              
+              const Divider(),
+            ],
+            
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
-                '계정',
-                style: TextStyle(
+                languageService.translate('account'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
@@ -265,39 +296,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             ListTile(
               leading: const Icon(Icons.person),
-              title: const Text('프로필 편집'),
+              title: Text(languageService.translate('profile_edit')),
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('프로필 편집 - 준비 중')),
+                  SnackBar(content: Text('${languageService.translate('profile_edit')} - ${languageService.translate('coming_soon')}')),
                 );
               },
             ),
             
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.orange),
-              title: const Text(
-                '로그아웃',
-                style: TextStyle(color: Colors.orange),
+              title: Text(
+                languageService.translate('logout'),
+                style: const TextStyle(color: Colors.orange),
               ),
               onTap: _handleLogout,
             ),
             
             ListTile(
               leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text(
-                '회원 탈퇴',
-                style: TextStyle(color: Colors.red),
+              title: Text(
+                languageService.translate('delete_account'),
+                style: const TextStyle(color: Colors.red),
               ),
               onTap: _handleDeleteAccount,
             ),
             
             const Divider(),
             
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
-                '정보',
-                style: TextStyle(
+                languageService.translate('info'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
@@ -305,28 +336,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             
-            const ListTile(
-              leading: Icon(Icons.info),
-              title: Text('앱 버전'),
-              subtitle: Text('1.0.0'),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: Text(languageService.translate('app_version')),
+              subtitle: const Text('1.0.0'),
             ),
             
             ListTile(
               leading: const Icon(Icons.description),
-              title: const Text('이용약관'),
+              title: Text(languageService.translate('terms_of_service')),
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('이용약관 - 준비 중')),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TermsOfServiceScreen()),
                 );
               },
             ),
             
             ListTile(
               leading: const Icon(Icons.privacy_tip),
-              title: const Text('개인정보처리방침'),
+              title: Text(languageService.translate('privacy_policy')),
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('개인정보처리방침 - 준비 중')),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
                 );
               },
             ),

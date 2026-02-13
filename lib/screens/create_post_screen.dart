@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final String categoryId;
@@ -60,18 +64,71 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _isLoading = true;
       });
 
-      // Simulate post submission
-      await Future.delayed(const Duration(seconds: 1));
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final userId = authService.currentUserId ?? 'unknown';
+        final userName = authService.currentUserName ?? 'Unknown User';
+        
+        // Create post data
+        final postId = 'post_${DateTime.now().millisecondsSinceEpoch}';
+        final postData = {
+          'post_id': postId,
+          'title': _titleController.text.trim(),
+          'content': _contentController.text.trim(),
+          'category': widget.categoryId,
+          'author_id': userId,
+          'author_name': userName,
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+          'view_count': 0,
+          'like_count': 0,
+          'comment_count': 0,
+          'is_notice': false,
+          'is_deleted': false,
+          'images': [],
+          'tags': [],
+        };
+        
+        // Save to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        
+        // Get existing posts for this category
+        final postsKey = 'posts_${widget.categoryId}';
+        final existingPostsJson = prefs.getString(postsKey) ?? '[]';
+        final List<dynamic> existingPosts = jsonDecode(existingPostsJson);
+        
+        // Add new post
+        existingPosts.insert(0, postData); // Insert at beginning
+        
+        // Save back to SharedPreferences
+        await prefs.setString(postsKey, jsonEncode(existingPosts));
+        
+        setState(() {
+          _isLoading = false;
+        });
 
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('게시글이 등록되었습니다')),
-        );
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('게시글이 등록되었습니다'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true); // Return true to indicate success
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('게시글 등록 실패: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

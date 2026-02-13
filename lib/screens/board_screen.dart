@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../services/storage_service.dart';
 import 'home_screen.dart';
 import 'post_detail_screen.dart';
@@ -18,37 +20,48 @@ class BoardScreen extends StatefulWidget {
 
 class _BoardScreenState extends State<BoardScreen> {
   // Sample posts - in a real app, these would come from Firebase
-  final List<Post> _posts = [];
+  List<Post> _posts = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSamplePosts();
+    _loadPosts();
   }
 
-  void _loadSamplePosts() {
-    // Sample data with unique IDs per category
-    _posts.addAll([
-      Post(
-        id: '${widget.category.id}_1',
-        title: '환영합니다! ${widget.category.title}입니다',
-        content: '이곳은 ${widget.category.description}\n\n'
-            '관리자가 게시한 공지사항과 정보를 확인하실 수 있습니다.',
-        author: '관리자',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        categoryId: widget.category.id,
-        isAdminPost: true,
-      ),
-      Post(
-        id: '${widget.category.id}_2',
-        title: '샘플 게시글 2',
-        content: '이것은 샘플 게시글입니다.',
-        author: '관리자',
-        createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-        categoryId: widget.category.id,
-        isAdminPost: true,
-      ),
-    ]);
+  Future<void> _loadPosts() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final postsKey = 'posts_${widget.category.id}';
+      final postsJson = prefs.getString(postsKey) ?? '[]';
+      final List<dynamic> postsList = jsonDecode(postsJson);
+      
+      final loadedPosts = postsList.map((postData) {
+        return Post(
+          id: postData['post_id'] ?? '',
+          title: postData['title'] ?? '',
+          content: postData['content'] ?? '',
+          author: postData['author_name'] ?? 'Unknown',
+          authorId: postData['author_id'] ?? '',
+          createdAt: DateTime.parse(postData['created_at'] ?? DateTime.now().toIso8601String()),
+          categoryId: postData['category'] ?? widget.category.id,
+          isAdminPost: postData['author_id'] == 'admin',
+        );
+      }).toList();
+      
+      setState(() {
+        _posts = loadedPosts;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -89,7 +102,9 @@ class _BoardScreenState extends State<BoardScreen> {
             ),
         ],
       ),
-      body: _posts.isEmpty
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _posts.isEmpty
           ? const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -114,13 +129,18 @@ class _BoardScreenState extends State<BoardScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   elevation: 2,
                   child: InkWell(
-                    onTap: () {
-                      Navigator.push(
+                    onTap: () async {
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => PostDetailScreen(post: post),
                         ),
                       );
+                      
+                      // Reload posts if deleted
+                      if (result == true) {
+                        _loadPosts();
+                      }
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -243,8 +263,8 @@ class _BoardScreenState extends State<BoardScreen> {
             ),
       floatingActionButton: widget.category.allowUserPost
           ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => CreatePostScreen(
@@ -252,7 +272,12 @@ class _BoardScreenState extends State<BoardScreen> {
                       categoryTitle: widget.category.title,
                     ),
                   ),
-                ).then((_) => setState(() {}));
+                );
+                
+                // Reload posts if a new post was created
+                if (result == true) {
+                  _loadPosts();
+                }
               },
               backgroundColor: widget.category.color,
               icon: const Icon(Icons.edit, color: Colors.white),
@@ -286,6 +311,7 @@ class Post {
   final String title;
   final String content;
   final String author;
+  final String authorId;
   final DateTime createdAt;
   final String categoryId;
   final bool isAdminPost;
@@ -296,6 +322,7 @@ class Post {
     required this.title,
     required this.content,
     required this.author,
+    required this.authorId,
     required this.createdAt,
     required this.categoryId,
     this.isAdminPost = false,
@@ -308,6 +335,7 @@ class Post {
       'title': title,
       'content': content,
       'author': author,
+      'author_id': authorId,
       'createdAt': createdAt.toIso8601String(),
       'categoryId': categoryId,
       'isAdminPost': isAdminPost,
@@ -321,6 +349,7 @@ class Post {
       title: map['title'] as String,
       content: map['content'] as String,
       author: map['author'] as String,
+      authorId: map['author_id'] as String? ?? '',
       createdAt: DateTime.parse(map['createdAt'] as String),
       categoryId: map['categoryId'] as String,
       isAdminPost: map['isAdminPost'] as bool? ?? false,

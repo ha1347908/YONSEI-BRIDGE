@@ -109,10 +109,27 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/images/yonsei_bridge_logo.png',
-                width: 200,
-                height: 200,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  child: Image.asset(
+                    'assets/images/yonsei_bridge_logo.png',
+                    width: 200,
+                    height: 200,
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
               const CircularProgressIndicator(

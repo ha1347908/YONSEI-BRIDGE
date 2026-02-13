@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/language_service.dart';
+import '../services/permission_service.dart';
 import 'board_screen.dart';
 import 'saved_posts_screen.dart';
 import 'settings_screen.dart';
@@ -13,100 +15,120 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<BoardCategory> _categories = [
-    BoardCategory(
-      id: 'free_board',
-      title: '자유게시판',
-      icon: Icons.forum,
-      color: const Color(0xFF0038A8),
-      description: '누구나 자유롭게 글을 작성할 수 있습니다',
-      allowUserPost: true,
-    ),
-    BoardCategory(
-      id: 'living_setup',
-      title: '리빙셋업',
-      icon: Icons.home_work,
-      color: const Color(0xFF6B4EFF),
-      description: '입국부터 정착까지 단계별 가이드',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'transportation',
-      title: '원주시 교통정보',
-      icon: Icons.directions_bus,
-      color: const Color(0xFF00BCD4),
-      description: '버스, 택시, 교통편 정보',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'useful_info',
-      title: '유용한 정보글',
-      icon: Icons.lightbulb,
-      color: const Color(0xFFFF9800),
-      description: '생활 꿀팁과 유용한 정보',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'campus_info',
-      title: '미래캠퍼스 정보',
-      icon: Icons.school,
-      color: const Color(0xFF4CAF50),
-      description: '캠퍼스 시설, 학사 일정 정보',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'need_job',
-      title: '니드잡',
-      icon: Icons.work,
-      color: const Color(0xFFE91E63),
-      description: '유학생 특화 구인 정보',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'hospital_info',
-      title: '원주시 병원정보',
-      icon: Icons.local_hospital,
-      color: const Color(0xFFF44336),
-      description: '병원 정보 및 의료 지원',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'restaurants',
-      title: '원주시 맛집, 카페',
-      icon: Icons.restaurant,
-      color: const Color(0xFF795548),
-      description: '맛집과 카페 추천',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'clubs',
-      title: '동아리 소개',
-      icon: Icons.groups,
-      color: const Color(0xFF9C27B0),
-      description: '미래캠퍼스 동아리 정보',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'korean_exchange',
-      title: '한국 학생과의 교류',
-      icon: Icons.language,
-      color: const Color(0xFF3F51B5),
-      description: '한국 학생들과 소통하기',
-      allowUserPost: false,
-    ),
-    BoardCategory(
-      id: 'about',
-      title: '연세브릿지에 대하여',
-      icon: Icons.info,
-      color: const Color(0xFF607D8B),
-      description: '앱 소개 및 이용 안내',
-      allowUserPost: false,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Request permissions after screen is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestPermissions();
+    });
+  }
+
+  Future<void> _requestPermissions() async {
+    if (mounted) {
+      await PermissionService.requestAllPermissions(context);
+    }
+  }
+
+  List<BoardCategory> _getCategories(BuildContext context) {
+    final lang = Provider.of<LanguageService>(context);
+    return [
+      BoardCategory(
+        id: 'free_board',
+        title: lang.translate('free_board'),
+        icon: Icons.forum,
+        color: const Color(0xFF0038A8),
+        description: lang.translate('free_board_desc'),
+        allowUserPost: true,
+      ),
+      BoardCategory(
+        id: 'living_setup',
+        title: lang.translate('living_setup'),
+        icon: Icons.home_work,
+        color: const Color(0xFF6B4EFF),
+        description: lang.translate('living_setup_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'transportation',
+        title: lang.translate('transportation'),
+        icon: Icons.directions_bus,
+        color: const Color(0xFF00BCD4),
+        description: lang.translate('transportation_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'useful_info',
+        title: lang.translate('useful_info'),
+        icon: Icons.lightbulb,
+        color: const Color(0xFFFF9800),
+        description: lang.translate('useful_info_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'campus_info',
+        title: lang.translate('campus_info'),
+        icon: Icons.school,
+        color: const Color(0xFF4CAF50),
+        description: lang.translate('campus_info_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'need_job',
+        title: lang.translate('need_job'),
+        icon: Icons.work,
+        color: const Color(0xFFE91E63),
+        description: lang.translate('need_job_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'hospital_info',
+        title: lang.translate('hospital_info'),
+        icon: Icons.local_hospital,
+        color: const Color(0xFFF44336),
+        description: lang.translate('hospital_info_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'restaurants',
+        title: lang.translate('restaurants'),
+        icon: Icons.restaurant,
+        color: const Color(0xFF795548),
+        description: lang.translate('restaurants_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'clubs',
+        title: lang.translate('clubs'),
+        icon: Icons.groups,
+        color: const Color(0xFF9C27B0),
+        description: lang.translate('clubs_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'korean_exchange',
+        title: lang.translate('korean_exchange'),
+        icon: Icons.language,
+        color: const Color(0xFF3F51B5),
+        description: lang.translate('korean_exchange_desc'),
+        allowUserPost: false,
+      ),
+      BoardCategory(
+        id: 'about',
+        title: lang.translate('about'),
+        icon: Icons.info,
+        color: const Color(0xFF607D8B),
+        description: lang.translate('about_desc'),
+        allowUserPost: false,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
+    final languageService = Provider.of<LanguageService>(context);
+    final categories = _getCategories(context);
     
     return Scaffold(
       appBar: AppBar(
@@ -124,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
-            tooltip: '저장된 게시물',
+            tooltip: languageService.translate('saved_posts'),
           ),
           IconButton(
             icon: const Icon(Icons.menu),
@@ -136,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
-            tooltip: '설정',
+            tooltip: languageService.translate('settings'),
           ),
         ],
       ),
@@ -162,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '안녕하세요, ${authService.currentUserName ?? "학생"}님!',
+                      '${languageService.translate('welcome_message')}, ${authService.currentUserName ?? languageService.translate('student')}${languageService.translate('greeting')}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -170,9 +192,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'WE CONNECT PEOPLE',
-                      style: TextStyle(
+                    Text(
+                      languageService.translate('we_connect_people'),
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 16,
                       ),
@@ -193,9 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSpacing: 16,
                     childAspectRatio: 1.0,
                   ),
-                  itemCount: _categories.length,
+                  itemCount: categories.length,
                   itemBuilder: (context, index) {
-                    final category = _categories[index];
+                    final category = categories[index];
                     return _buildCategoryCard(category);
                   },
                 ),
