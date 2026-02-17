@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "764894318156",
+    "project_id": "yonsei-bridge",
+    "storage_bucket": "yonsei-bridge.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:764894318156:android:569bcd086379bcac236ee9",
+        "android_client_info": {
+          "package_name": "com.myapp.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfChGwmugWj6WdUb4qcEcsw_FiHIs-JRY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
