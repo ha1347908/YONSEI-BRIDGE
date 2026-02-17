@@ -11,6 +11,7 @@ import 'admin_approval_screen.dart';
 import 'admin_notification_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'country_group_management_screen.dart';
+import 'admin_analytics_dashboard_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -566,6 +567,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const CountryGroupManagementScreen()),
+                  );
+                },
+              ),
+              
+              ListTile(
+                leading: const Icon(Icons.analytics, color: Color(0xFF0038A8)),
+                title: const Text('데이터 분석 대시보드'),
+                subtitle: const Text('리텐션, MAU, 클릭로그, 전환율, 응답속도'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminAnalyticsDashboardScreen()),
                   );
                 },
               ),
