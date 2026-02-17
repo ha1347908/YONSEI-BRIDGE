@@ -203,7 +203,70 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildConversationTile(ChatConversation conversation) {
-    return ListTile(
+    return Dismissible(
+      key: Key(conversation.userId),
+      direction: conversation.isAdmin ? DismissDirection.none : DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white, size: 32),
+      ),
+      confirmDismiss: (direction) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('대화 삭제'),
+            content: Text('${conversation.userName}와의 대화를 삭제하시겠습니까?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('삭제'),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) async {
+        // Delete all messages with this user
+        final chatBox = await Hive.openBox('chat_messages');
+        final keysToDelete = <dynamic>[];
+        
+        for (var key in chatBox.keys) {
+          final chatData = chatBox.get(key);
+          if (chatData is Map) {
+            final senderId = chatData['senderId'] as String?;
+            final receiverId = chatData['receiverId'] as String?;
+            
+            if ((senderId == conversation.userId && receiverId == _currentUserId) ||
+                (receiverId == conversation.userId && senderId == _currentUserId)) {
+              keysToDelete.add(key);
+            }
+          }
+        }
+        
+        for (var key in keysToDelete) {
+          await chatBox.delete(key);
+        }
+        
+        // Reload conversations
+        await _loadConversations();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${conversation.userName}와의 대화가 삭제되었습니다'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      },
+      child: ListTile(
       leading: Stack(
         children: [
           CircleAvatar(
@@ -318,6 +381,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           _loadConversations();
         }
       },
+    ),
     );
   }
 

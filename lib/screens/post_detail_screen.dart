@@ -98,16 +98,41 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Close button
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              
               // Profile picture
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: const Color(0xFF0038A8),
-                child: Text(
-                  authorName.isNotEmpty ? authorName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0038A8).withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundColor: const Color(0xFF0038A8),
+                  child: Text(
+                    authorName.isNotEmpty ? authorName[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -120,23 +145,51 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               
-              // Nationality
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.flag, size: 16, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    authorNationality,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
+              // Info cards
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.flag, size: 20, color: Color(0xFF0038A8)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Nationality',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                authorNationality,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               
@@ -149,7 +202,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       icon: const Icon(Icons.close),
                       label: const Text('닫기'),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFF0038A8)),
+                        foregroundColor: const Color(0xFF0038A8),
                       ),
                     ),
                   ),
@@ -178,7 +233,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6B4EFF),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 2,
                       ),
                     ),
                   ),

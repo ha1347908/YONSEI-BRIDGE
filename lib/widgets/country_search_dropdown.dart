@@ -156,6 +156,22 @@ class _CountryPickerContentState extends State<_CountryPickerContent> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0038A8).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_filteredCountries.length} countries',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF0038A8),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                   const Spacer(),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
