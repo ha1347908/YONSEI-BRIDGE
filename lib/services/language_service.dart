@@ -113,6 +113,49 @@ class LanguageService extends ChangeNotifier {
         'living_setup_feature3_desc': '한국 휴대폰 번호가 없어도 괜찮아요! 가입 즉시 필수 정보를 확인하세요.',
         'start_living_setup': '리빙셋업 시작하기',
         'close': '닫기',
+        
+        // Signup & Profile Setup
+        'student_type': '학생 유형',
+        'degree_student': '학위생',
+        'exchange_student': '교환/방문/어학연수생',
+        'department': '소속학과',
+        'select_department': '학과를 선택하세요',
+        'entry_date': '한국 입국일',
+        'select_entry_date': '입국일을 선택하세요',
+        'housing_type': '주거 형태',
+        'dormitory': '기숙사',
+        'studio': '자취/원룸',
+        'housing_other': '기타',
+        'korean_proficiency': '한국어 숙련도',
+        'no_topik': 'No TOPIK (I need help with everything in English/my language)',
+        'level_1_2': 'Level 1~2 (I can order food but need help at the bank/hospital)',
+        'level_3_4': 'Level 3~4 (I can handle daily life but academic tasks are hard)',
+        'level_5_6': 'Level 5~6 (I\'m comfortable with almost everything in Korean)',
+        'dietary_preference': '식단 취향',
+        'dietary_hint': '예: 할랄, 비건, 채식 등',
+        'interests': '관심사',
+        'select_interests': '최소 3개 이상 선택하세요',
+        'visa_type': '비자 유형',
+        'select_visa': '비자를 선택하세요',
+        'profile_photo': '프로필 사진',
+        'profile_photo_later': '프로필 사진은 가입 이후 설정 가능합니다',
+        'complete_profile': '프로필 완성하기',
+        'skip': '건너뛰기',
+        
+        // Notification Permission
+        'notification_permission_title': '당신에게 꼭 필요한 정보를 놓치지 마세요! 🔔',
+        'notification_permission_desc': '알림을 켜두시면 유학생 여러분의 정착을 돕는 \'리빙셋업\'의 핵심 정보를 실시간으로 보내드립니다.',
+        'notification_feature1': '📅 개인별 타임라인: 비자 연장, 수강 신청 등 중요한 일정을 미리 챙겨드려요.',
+        'notification_feature2': '🏠 생활 밀착 가이드: 오늘 쓰레기 배출 요일, 기숙사 공지 등을 바로 확인하세요.',
+        'notification_feature3': '⚠️ 안심 알림: 긴급 상황 발생 시 대처법과 가까운 안심 병원 정보를 알려드려요.',
+        'turn_on_notifications': '알림 설정하기',
+        
+        // Account Recovery
+        'account_recovery': '계정 복구',
+        'account_recovery_guide': '계정 복구 안내',
+        
+        // D-4-1 Visa Warning
+        'd4_1_job_warning': '아르바이트는 입국 후 6개월이 지나야 가능합니다',
       },
       'en': {
         // App common
@@ -201,6 +244,49 @@ class LanguageService extends ChangeNotifier {
         'living_setup_feature3_desc': 'It\'s okay if you don\'t have a Korean phone number yet! Access essential information immediately upon signing up.',
         'start_living_setup': 'Start Living Setup',
         'close': 'Close',
+        
+        // Signup & Profile Setup
+        'student_type': 'Student Type',
+        'degree_student': 'Degree-Seeking Student',
+        'exchange_student': 'Exchange/Visiting/Language Student',
+        'department': 'Department/Major',
+        'select_department': 'Select your department',
+        'entry_date': 'Arrival Date in Korea',
+        'select_entry_date': 'Select your arrival date',
+        'housing_type': 'Housing',
+        'dormitory': 'University Dormitory',
+        'studio': 'Studio (One-room)',
+        'housing_other': 'Other',
+        'korean_proficiency': 'Korean Proficiency',
+        'no_topik': 'No TOPIK (I need help with everything in English/my language)',
+        'level_1_2': 'Level 1~2 (I can order food but need help at the bank/hospital)',
+        'level_3_4': 'Level 3~4 (I can handle daily life but academic tasks are hard)',
+        'level_5_6': 'Level 5~6 (I\'m comfortable with almost everything in Korean)',
+        'dietary_preference': 'Dietary Preference',
+        'dietary_hint': 'e.g., Halal, Vegan, Vegetarian, etc.',
+        'interests': 'Interests',
+        'select_interests': 'Select at least 3 interests',
+        'visa_type': 'Visa Type',
+        'select_visa': 'Select your visa type',
+        'profile_photo': 'Profile Photo',
+        'profile_photo_later': 'Profile photo can be set after registration',
+        'complete_profile': 'Complete Profile',
+        'skip': 'Skip',
+        
+        // Notification Permission
+        'notification_permission_title': 'Don\'t miss out on your Survival Guide! 🔔',
+        'notification_permission_desc': 'Turn on notifications to receive personalized \'Living Setup\' updates just for you.',
+        'notification_feature1': '📅 Personalized Timeline: Get reminders for ARC applications and course registration.',
+        'notification_feature2': '🏠 Instant Life Tips: From trash disposal days to dormitory notices.',
+        'notification_feature3': '⚠️ Health & Safety: Emergency alerts and nearby hospital info.',
+        'turn_on_notifications': 'Turn on Notifications',
+        
+        // Account Recovery
+        'account_recovery': 'Account Recovery',
+        'account_recovery_guide': 'Account Recovery Guide',
+        
+        // D-4-1 Visa Warning
+        'd4_1_job_warning': 'Part-time work is only allowed 6 months after arrival',
       },
       'zh': {
         // 应用通用
@@ -289,6 +375,49 @@ class LanguageService extends ChangeNotifier {
         'living_setup_feature3_desc': '还没有韩国手机号？没关系！注册后即可立即查看所有核心生活资讯。',
         'start_living_setup': '开始生活指南',
         'close': '关闭',
+        
+        // Signup & Profile Setup
+        'student_type': '学生类型',
+        'degree_student': '学位生',
+        'exchange_student': '交换/访问/语言研修生',
+        'department': '所属专业',
+        'select_department': '选择您的专业',
+        'entry_date': '入境韩国日期',
+        'select_entry_date': '选择入境日期',
+        'housing_type': '居住形式',
+        'dormitory': '学校宿舍',
+        'studio': '自炊房/一居室',
+        'housing_other': '其他',
+        'korean_proficiency': '韩语熟练度',
+        'no_topik': 'No TOPIK (I need help with everything in English/my language)',
+        'level_1_2': 'Level 1~2 (I can order food but need help at the bank/hospital)',
+        'level_3_4': 'Level 3~4 (I can handle daily life but academic tasks are hard)',
+        'level_5_6': 'Level 5~6 (I\'m comfortable with almost everything in Korean)',
+        'dietary_preference': '饮食偏好',
+        'dietary_hint': '如：清真、纯素、素食等',
+        'interests': '兴趣爱好',
+        'select_interests': '至少选择3项',
+        'visa_type': '签证类型',
+        'select_visa': '选择您的签证类型',
+        'profile_photo': '个人照片',
+        'profile_photo_later': '个人照片可在注册后设置',
+        'complete_profile': '完成个人资料',
+        'skip': '跳过',
+        
+        // Notification Permission
+        'notification_permission_title': '不要错过为您量身定制的生存指南！ 🔔',
+        'notification_permission_desc': '开启通知，即可实时获取帮助您快速适应韩国生活的\'Living Setup\'核心信息。',
+        'notification_feature1': '📅 个人定制时间轴: 提前提醒您外国人登录证(ARC)申请和选课等重要日程。',
+        'notification_feature2': '🏠 贴心生活指南: 实时掌握垃圾分类日期、宿舍通知等实用信息。',
+        'notification_feature3': '⚠️ 安全守护: 紧急情况应对方法及周边安心医院信息。',
+        'turn_on_notifications': '开启通知',
+        
+        // Account Recovery
+        'account_recovery': '账户恢复',
+        'account_recovery_guide': '账户恢复指南',
+        
+        // D-4-1 Visa Warning
+        'd4_1_job_warning': '入境6个月后才可以打工',
       },
       'ja': {
         // アプリ共通
@@ -377,6 +506,49 @@ class LanguageService extends ChangeNotifier {
         'living_setup_feature3_desc': '韓国の電話番号がなくても大丈夫！加入後すぐに、必要な情報を確認できます。',
         'start_living_setup': 'リビングセットアップを開始',
         'close': '閉じる',
+        
+        // Signup & Profile Setup
+        'student_type': '学生タイプ',
+        'degree_student': '学位課程学生',
+        'exchange_student': '交換/訪問/語学研修生',
+        'department': '所属学科',
+        'select_department': '学科を選択してください',
+        'entry_date': '韓国入国日',
+        'select_entry_date': '入国日を選択してください',
+        'housing_type': '居住形態',
+        'dormitory': '学校寄宿舎',
+        'studio': 'ワンルーム/自炊',
+        'housing_other': 'その他',
+        'korean_proficiency': '韓国語熟練度',
+        'no_topik': 'No TOPIK (I need help with everything in English/my language)',
+        'level_1_2': 'Level 1~2 (I can order food but need help at the bank/hospital)',
+        'level_3_4': 'Level 3~4 (I can handle daily life but academic tasks are hard)',
+        'level_5_6': 'Level 5~6 (I\'m comfortable with almost everything in Korean)',
+        'dietary_preference': '食事の好み',
+        'dietary_hint': '例: ハラール、ビーガン、菜食など',
+        'interests': '興味・関心',
+        'select_interests': '最低3つ選択してください',
+        'visa_type': 'ビザタイプ',
+        'select_visa': 'ビザタイプを選択してください',
+        'profile_photo': 'プロフィール写真',
+        'profile_photo_later': 'プロフィール写真は登録後に設定できます',
+        'complete_profile': 'プロフィール完成',
+        'skip': 'スキップ',
+        
+        // Notification Permission
+        'notification_permission_title': '必要な情報を見逃さないでください！ 🔔',
+        'notification_permission_desc': '通知を有効にすると、留学生の皆様の定住を支援する「リビングセットアップ」の重要情報をリアルタイムで受け取れます。',
+        'notification_feature1': '📅 個別タイムライン: ビザ延長、履修登録など重要なスケジュールを事前にお知らせします。',
+        'notification_feature2': '🏠 生活密着ガイド: ゴミ出し日、寄宿舎のお知らせなどをすぐに確認できます。',
+        'notification_feature3': '⚠️ 安心アラート: 緊急時の対処法と近くの安心病院情報をお知らせします。',
+        'turn_on_notifications': '通知設定',
+        
+        // Account Recovery
+        'account_recovery': 'アカウント回復',
+        'account_recovery_guide': 'アカウント回復ガイド',
+        
+        // D-4-1 Visa Warning
+        'd4_1_job_warning': 'アルバイトは入国6ヶ月後から可能です',
       },
     };
   }
