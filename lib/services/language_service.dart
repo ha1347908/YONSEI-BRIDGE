@@ -72,6 +72,7 @@ class LanguageService extends ChangeNotifier {
         
         // 메뉴
         'saved_posts': '저장된 게시물',
+        'chat': '채팅',
         'notifications': '알림',
         'notification_settings': '알림 설정',
         'push_notification_manage': '푸시 알림 관리',
@@ -212,6 +213,7 @@ class LanguageService extends ChangeNotifier {
         
         // Menu
         'saved_posts': 'Saved Posts',
+        'chat': 'Chat',
         'notifications': 'Notifications',
         'notification_settings': 'Notification Settings',
         'push_notification_manage': 'Manage push notifications',
@@ -352,6 +354,7 @@ class LanguageService extends ChangeNotifier {
         
         // 菜单
         'saved_posts': '已保存帖子',
+        'chat': '聊天',
         'notifications': '通知',
         'notification_settings': '通知设置',
         'push_notification_manage': '管理推送通知',
@@ -492,6 +495,7 @@ class LanguageService extends ChangeNotifier {
         
         // メニュー
         'saved_posts': '保存した投稿',
+        'chat': 'チャット',
         'notifications': '通知',
         'notification_settings': '通知設定',
         'push_notification_manage': 'プッシュ通知の管理',
