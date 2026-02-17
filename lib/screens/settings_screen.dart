@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
+import '../services/firebase_storage_service.dart';
 import 'login_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'privacy_policy_screen.dart';
@@ -17,11 +18,21 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
+  String? _profilePhotoUrl;
+  bool _isUploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
     _loadNotificationSettings();
+    _loadProfilePhoto();
+  }
+
+  Future<void> _loadProfilePhoto() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _profilePhotoUrl = prefs.getString('profile_photo_url');
+    });
   }
 
   Future<void> _loadNotificationSettings() async {
@@ -45,6 +56,179 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: const Duration(seconds: 1),
         ),
       );
+    }
+  }
+
+  Future<void> _showPhotoOptions() async {
+    final languageService = Provider.of<LanguageService>(context, listen: false);
+    
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF0038A8)),
+              title: Text(languageService.translate('select_from_gallery')),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadProfilePhoto(fromGallery: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF0038A8)),
+              title: Text(languageService.translate('take_photo')),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadProfilePhoto(fromGallery: false);
+              },
+            ),
+            if (_profilePhotoUrl != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: Text(
+                  languageService.translate('remove_photo'),
+                  style: const TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _removeProfilePhoto();
+                },
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _uploadProfilePhoto({required bool fromGallery}) async {
+    final languageService = Provider.of<LanguageService>(context, listen: false);
+    final firebaseStorageService = Provider.of<FirebaseStorageService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    setState(() {
+      _isUploadingPhoto = true;
+    });
+
+    try {
+      // Pick image
+      final imageFile = fromGallery
+          ? await firebaseStorageService.pickImageFromGallery()
+          : await firebaseStorageService.takePhotoWithCamera();
+
+      if (imageFile == null) {
+        setState(() {
+          _isUploadingPhoto = false;
+        });
+        return;
+      }
+
+      // Upload to Firebase Storage
+      final downloadUrl = await firebaseStorageService.uploadProfilePhoto(
+        authService.currentUserId ?? 'unknown',
+        imageFile,
+      );
+
+      if (downloadUrl != null) {
+        // Save URL to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profile_photo_url', downloadUrl);
+
+        setState(() {
+          _profilePhotoUrl = downloadUrl;
+          _isUploadingPhoto = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(languageService.translate('profile_photo_updated')),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Upload failed');
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingPhoto = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(languageService.translate('profile_photo_upload_failed')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final languageService = Provider.of<LanguageService>(context, listen: false);
+    final firebaseStorageService = Provider.of<FirebaseStorageService>(context, listen: false);
+
+    if (_profilePhotoUrl == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(languageService.translate('remove_photo')),
+        content: Text(languageService.translate('remove_photo_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(languageService.translate('cancel')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(languageService.translate('remove')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      // Delete from Firebase Storage
+      await firebaseStorageService.deleteProfilePhoto(_profilePhotoUrl!);
+
+      // Remove from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('profile_photo_url');
+
+      setState(() {
+        _profilePhotoUrl = null;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(languageService.translate('profile_photo_removed')),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }
   }
 
@@ -154,14 +338,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: Column(
                 children: [
-                  const CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 40,
-                      color: Color(0xFF0038A8),
-                    ),
+                  Stack(
+                    children: [
+                      GestureDetector(
+                        onTap: _showPhotoOptions,
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Colors.white,
+                          backgroundImage: _profilePhotoUrl != null
+                              ? NetworkImage(_profilePhotoUrl!)
+                              : null,
+                          child: _isUploadingPhoto
+                              ? const CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0038A8)),
+                                )
+                              : _profilePhotoUrl == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 50,
+                                      color: Color(0xFF0038A8),
+                                    )
+                                  : null,
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _showPhotoOptions,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF0038A8),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   Text(

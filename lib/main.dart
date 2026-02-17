@@ -8,6 +8,7 @@ import 'services/auth_service.dart';
 import 'services/storage_service.dart';
 import 'services/language_service.dart';
 import 'services/privacy_screen_service.dart';
+import 'services/firebase_storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -74,6 +75,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => StorageService()),
         ChangeNotifierProvider(create: (_) => LanguageService()..loadLanguage()),
+        ChangeNotifierProvider(create: (_) => FirebaseStorageService()),
       ],
       child: Consumer<LanguageService>(
         builder: (context, languageService, child) {
