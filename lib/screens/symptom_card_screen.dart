@@ -164,10 +164,23 @@ class _SymptomCardScreenState extends State<SymptomCardScreen> {
         ),
       );
 
-      // PDF 저장/공유
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
+      // PDF 저장/공유 - 모바일에서 파일로 저장 가능
+      final pdfBytes = await pdf.save();
+      
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'symptom_card_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf',
       );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('증상카드 PDF가 생성되었습니다. 파일을 저장하거나 공유하세요.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

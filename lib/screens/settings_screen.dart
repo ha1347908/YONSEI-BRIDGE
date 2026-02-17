@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import 'login_screen.dart';
@@ -15,6 +16,38 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _notificationsEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationSettings();
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+    });
+  }
+
+  Future<void> _toggleNotifications(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifications_enabled', value);
+    setState(() {
+      _notificationsEnabled = value;
+    });
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value ? '알림이 켜졌습니다' : '알림이 꺼졌습니다'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
   Future<void> _handleLogout() async {
     final languageService = Provider.of<LanguageService>(context, listen: false);
     final confirm = await showDialog<bool>(
@@ -243,18 +276,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               leading: const Icon(Icons.notifications),
               title: Text(languageService.translate('notification_settings')),
-              subtitle: Text(languageService.translate('push_notification_manage')),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${languageService.translate('notification_settings')} - ${languageService.translate('coming_soon')}')),
-                );
-              },
+              subtitle: Text(_notificationsEnabled ? '알림 켜짐' : '알림 꺼짐'),
+              trailing: Switch(
+                value: _notificationsEnabled,
+                onChanged: _toggleNotifications,
+                activeColor: const Color(0xFF0038A8),
+              ),
             ),
             
             const Divider(),
             
-            // Admin Section (only for admin users)
-            if (authService.currentUserId == 'admin') ...[
+            // Admin Section (only for full admin users - not post_only)
+            if (authService.isFullAdmin) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 child: Text(
@@ -313,14 +346,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _handleLogout,
             ),
             
-            ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: Text(
-                languageService.translate('delete_account'),
-                style: const TextStyle(color: Colors.red),
+            // 탈퇴 불가 계정은 삭제 버튼 숨기기
+            if (authService.canDeleteAccount)
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: Text(
+                  languageService.translate('delete_account'),
+                  style: const TextStyle(color: Colors.red),
+                ),
+                onTap: _handleDeleteAccount,
               ),
-              onTap: _handleDeleteAccount,
-            ),
             
             const Divider(),
             

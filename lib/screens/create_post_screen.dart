@@ -39,9 +39,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final ImagePicker picker = ImagePicker();
     try {
       final List<XFile> images = await picker.pickMultiImage(
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 800,  // 해상도 낮춤 (1920 → 800)
+        maxHeight: 600, // 해상도 낮춤 (1080 → 600)
+        imageQuality: 50, // 압축률 높임 (85 → 50)
       );
       
       if (images.isNotEmpty) {
@@ -69,6 +69,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         final userId = authService.currentUserId ?? 'unknown';
         final userName = authService.currentUserName ?? 'Unknown User';
         
+        // Convert images to base64 strings for storage
+        final List<String> imageBase64List = [];
+        for (final image in _images) {
+          try {
+            final bytes = await image.readAsBytes();
+            final base64String = base64Encode(bytes);
+            imageBase64List.add(base64String);
+          } catch (e) {
+            // Silently skip failed images
+            debugPrint('Image encoding error: $e');
+          }
+        }
+        
         // Create post data
         final postId = 'post_${DateTime.now().millisecondsSinceEpoch}';
         final postData = {
@@ -85,7 +98,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           'comment_count': 0,
           'is_notice': false,
           'is_deleted': false,
-          'images': [],
+          'images': imageBase64List, // Save base64 encoded images
           'tags': [],
         };
         
@@ -109,8 +122,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('게시글이 등록되었습니다'),
+            SnackBar(
+              content: Text('게시글이 등록되었습니다${imageBase64List.isNotEmpty ? ' (사진 ${imageBase64List.length}장 포함)' : ''}'),
               backgroundColor: Colors.green,
             ),
           );
@@ -206,7 +219,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   icon: const Icon(Icons.add_photo_alternate),
                   label: Text(
                     _images.isEmpty
-                        ? '사진 추가 (최대 5장)'
+                        ? '사진 추가 (최대 10장)'
                         : '사진 ${_images.length}장 선택됨',
                   ),
                   style: OutlinedButton.styleFrom(

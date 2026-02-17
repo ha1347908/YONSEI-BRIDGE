@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import '../services/permission_service.dart';
@@ -18,15 +19,23 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Request permissions after screen is built
+    // Request permissions only once (on first launch)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestPermissions();
+      _requestPermissionsOnce();
     });
   }
 
-  Future<void> _requestPermissions() async {
-    if (mounted) {
+  Future<void> _requestPermissionsOnce() async {
+    if (!mounted) return;
+    
+    // Check if permissions have already been requested
+    final prefs = await SharedPreferences.getInstance();
+    final permissionsRequested = prefs.getBool('permissions_requested') ?? false;
+    
+    if (!permissionsRequested) {
       await PermissionService.requestAllPermissions(context);
+      // Mark as requested
+      await prefs.setBool('permissions_requested', true);
     }
   }
 

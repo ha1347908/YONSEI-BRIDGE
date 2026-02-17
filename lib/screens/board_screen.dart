@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/storage_service.dart';
+import '../services/auth_service.dart';
 import 'home_screen.dart';
 import 'post_detail_screen.dart';
 import 'create_post_screen.dart';
@@ -41,6 +42,15 @@ class _BoardScreenState extends State<BoardScreen> {
       final List<dynamic> postsList = jsonDecode(postsJson);
       
       final loadedPosts = postsList.map((postData) {
+        // Convert base64 images to data URLs for display
+        List<String>? imageUrls;
+        if (postData['images'] != null && postData['images'] is List && (postData['images'] as List).isNotEmpty) {
+          imageUrls = (postData['images'] as List).map((base64String) {
+            // Return data URL that can be used with Image.memory after decoding
+            return base64String as String;
+          }).toList();
+        }
+        
         return Post(
           id: postData['post_id'] ?? '',
           title: postData['title'] ?? '',
@@ -49,7 +59,8 @@ class _BoardScreenState extends State<BoardScreen> {
           authorId: postData['author_id'] ?? '',
           createdAt: DateTime.parse(postData['created_at'] ?? DateTime.now().toIso8601String()),
           categoryId: postData['category'] ?? widget.category.id,
-          isAdminPost: postData['author_id'] == 'admin',
+          isAdminPost: postData['author_id'] == 'welovejesus',
+          imageUrls: imageUrls, // Include image URLs
         );
       }).toList();
       
@@ -261,7 +272,7 @@ class _BoardScreenState extends State<BoardScreen> {
                 );
               },
             ),
-      floatingActionButton: widget.category.allowUserPost
+      floatingActionButton: _shouldShowWriteButton(context)
           ? FloatingActionButton.extended(
               onPressed: () async {
                 final result = await Navigator.push(
@@ -290,6 +301,22 @@ class _BoardScreenState extends State<BoardScreen> {
     );
   }
 
+  bool _shouldShowWriteButton(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // 관리자는 모든 게시판에 글쓰기 가능
+    if (authService.isAnyAdmin) {
+      return true;
+    }
+    
+    // 일반 사용자는 자유게시판(free_board)만 글쓰기 가능
+    if (widget.category.id == 'free_board') {
+      return true;
+    }
+    
+    return false;
+  }
+
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
@@ -316,6 +343,7 @@ class Post {
   final String categoryId;
   final bool isAdminPost;
   final List<String>? imageUrls;
+  final Map<String, dynamic>? targetFilters;
 
   Post({
     required this.id,
@@ -327,6 +355,7 @@ class Post {
     required this.categoryId,
     this.isAdminPost = false,
     this.imageUrls,
+    this.targetFilters,
   });
 
   Map<String, dynamic> toMap() {
@@ -340,6 +369,7 @@ class Post {
       'categoryId': categoryId,
       'isAdminPost': isAdminPost,
       'imageUrls': imageUrls,
+      'target_filters': targetFilters,
     };
   }
 
@@ -354,6 +384,7 @@ class Post {
       categoryId: map['categoryId'] as String,
       isAdminPost: map['isAdminPost'] as bool? ?? false,
       imageUrls: (map['imageUrls'] as List<dynamic>?)?.cast<String>(),
+      targetFilters: map['target_filters'] != null ? Map<String, dynamic>.from(map['target_filters']) : null,
     );
   }
 }

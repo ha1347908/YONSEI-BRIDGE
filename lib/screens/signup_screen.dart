@@ -20,12 +20,18 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _nicknameController = TextEditingController(); // 별명 필드 추가
   final _nationalityController = TextEditingController();
   final _contactController = TextEditingController();
   XFile? _studentIdImage;
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  
+  // 캠퍼스 및 학과 선택
+  String? _selectedCampus;
+  String? _selectedDepartment;
+  final _departmentSearchController = TextEditingController();
 
   @override
   void dispose() {
@@ -33,8 +39,10 @@ class _SignupScreenState extends State<SignupScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _nameController.dispose();
+    _nicknameController.dispose(); // 별명 컨트롤러 dispose
     _nationalityController.dispose();
     _contactController.dispose();
+    _departmentSearchController.dispose();
     super.dispose();
   }
 
@@ -233,6 +241,7 @@ For full details, please review our Privacy Policy in Settings.''';
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('demo_user_$userId', userId);
         await prefs.setString('demo_name_$userId', _nameController.text.trim());
+        await prefs.setString('demo_nickname_$userId', _nicknameController.text.trim()); // 별명 저장
         await prefs.setString('demo_nationality_$userId', _nationalityController.text.trim());
         await prefs.setString('demo_contact_$userId', _contactController.text.trim());
         await prefs.setString('demo_password_$userId', _passwordController.text);
@@ -448,14 +457,33 @@ For full details, please review our Privacy Policy in Settings.''';
                         TextFormField(
                           controller: _nameController,
                           decoration: const InputDecoration(
-                            labelText: '이름',
+                            labelText: '이름 (실명)',
                             prefixIcon: Icon(Icons.badge),
                             border: OutlineInputBorder(),
-                            hintText: '실명 입력',
+                            hintText: '예: 홍길동, John Smith',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return '이름을 입력해주세요';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _nicknameController,
+                          decoration: const InputDecoration(
+                            labelText: '별명 (닉네임)',
+                            prefixIcon: Icon(Icons.person_outline),
+                            border: OutlineInputBorder(),
+                            hintText: '앱에서 사용할 닉네임',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return '별명을 입력해주세요';
+                            }
+                            if (value.length < 2) {
+                              return '별명은 2자 이상이어야 합니다';
                             }
                             return null;
                           },

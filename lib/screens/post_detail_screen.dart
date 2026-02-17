@@ -82,7 +82,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     
     // Check if current user can delete this post
     final currentUserId = authService.currentUserId;
-    final isAdmin = currentUserId == 'admin';
+    final isAdmin = currentUserId == 'welovejesus';
     final isAuthor = currentUserId == widget.post.authorId;
     final canDelete = isAdmin || isAuthor;
 
@@ -196,19 +196,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   child: Column(
                     children: widget.post.imageUrls!
                         .map(
-                          (url) => Padding(
+                          (base64String) => Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                url,
+                              child: Image.memory(
+                                base64Decode(base64String),
                                 width: double.infinity,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Container(
                                     height: 200,
                                     color: Colors.grey[300],
-                                    child: const Icon(Icons.broken_image),
+                                    child: const Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.broken_image, size: 48),
+                                          SizedBox(height: 8),
+                                          Text('이미지 로드 실패'),
+                                        ],
+                                      ),
+                                    ),
                                   );
                                 },
                               ),

@@ -12,12 +12,42 @@ class AdminApprovalScreen extends StatefulWidget {
 class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   String _filterStatus = 'Pending';
   List<Map<String, dynamic>> _users = [];
+  List<Map<String, dynamic>> _recoveryRequests = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _loadRecoveryRequests();
+  }
+
+  Future<void> _loadRecoveryRequests() async {
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    
+    final requests = <Map<String, dynamic>>[];
+    
+    for (final key in allKeys) {
+      if (key.startsWith('recovery_request_')) {
+        final email = key.replaceFirst('recovery_request_', '');
+        final status = prefs.getString('recovery_status_$email') ?? 'Pending';
+        final requestTime = prefs.getString('recovery_request_$email');
+        
+        if (_filterStatus == 'Recovery' || _filterStatus == 'All') {
+          requests.add({
+            'email': email,
+            'status': status,
+            'request_time': requestTime != null ? DateTime.parse(requestTime) : DateTime.now(),
+            'name': prefs.getString('demo_name_$email') ?? 'Unknown',
+          });
+        }
+      }
+    }
+    
+    setState(() {
+      _recoveryRequests = requests;
+    });
   }
 
   Future<void> _loadUsers() async {
@@ -112,13 +142,40 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
     await prefs.setString('demo_status_${user['user_id']}', 'Blocked');
     await prefs.setString('demo_block_reason_${user['user_id']}', reason);
     
+    // 차단 후 학생증 사진 즉시 삭제
+    await prefs.remove('demo_photo_${user['user_id']}');
+    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${user['name']} (${user['user_id']}) 차단 완료'),
+          content: Text('${user['name']} (${user['user_id']}) 차단 완료 - 학생증 사진 삭제됨'),
           backgroundColor: Colors.red,
         ),
       );
+      // 상태 필터를 'Blocked'로 변경하고 목록 다시 로드
+      setState(() {
+        _filterStatus = 'Blocked';
+      });
+      _loadUsers();
+    }
+  }
+
+  Future<void> _unblockUser(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('demo_status_${user['user_id']}', 'Approved');
+    await prefs.remove('demo_block_reason_${user['user_id']}');
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${user['name']} (${user['user_id']}) 차단 해제 완료'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      // 상태 필터를 'Approved'로 변경하고 목록 다시 로드
+      setState(() {
+        _filterStatus = 'Approved';
+      });
       _loadUsers();
     }
   }
@@ -171,6 +228,169 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         ],
       ),
     );
+  }
+
+  void _showUnblockDialog(Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('차단 해제'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('사용자: ${user['name']} (${user['user_id']})'),
+            const SizedBox(height: 8),
+            const Text(
+              '차단을 해제하면 사용자가 다시 로그인할 수 있습니다.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _unblockUser(user);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('차단 해제'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRecoveryRequestDetails(Map<String, dynamic> request) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('계정 복구 요청 상세'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('이름', request['name']),
+            _buildInfoRow('이메일', request['email']),
+            _buildInfoRow('요청일', _formatDate(request['request_time'])),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '📧 처리 방법:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '1. 등록된 이메일로 본인 확인 메일 발송\n'
+                    '2. 사용자 확인 후 아래 승인 버튼 클릭\n'
+                    '3. 임시 비밀번호를 이메일로 전송',
+                    style: TextStyle(fontSize: 12, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('닫기'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _approveRecoveryRequest(request);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('복구 승인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _approveRecoveryRequest(Map<String, dynamic> request) async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = request['email'];
+    
+    // Generate temporary password
+    final tempPassword = 'Temp${DateTime.now().millisecondsSinceEpoch % 10000}!';
+    
+    // Update password
+    await prefs.setString('demo_password_$email', tempPassword);
+    
+    // Remove recovery request
+    await prefs.remove('recovery_request_$email');
+    await prefs.remove('recovery_status_$email');
+    
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('복구 승인 완료'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('계정 복구가 승인되었습니다.\n\n임시 비밀번호:'),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  tempPassword,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '📧 이 비밀번호를 사용자 이메일(${request['email']})로 전송해주세요.',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _loadRecoveryRequests();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0038A8),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _rejectUser(Map<String, dynamic> user, String reason) async {
@@ -370,6 +590,20 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                           padding: const EdgeInsets.all(16),
                         ),
                       ),
+                    if (user['status'] == 'Blocked')
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showUnblockDialog(user);
+                        },
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('차단 해제'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.all(16),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -509,6 +743,11 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                         icon: Icon(Icons.block),
                       ),
                       ButtonSegment(
+                        value: 'Recovery',
+                        label: Text('복구요청'),
+                        icon: Icon(Icons.restore),
+                      ),
+                      ButtonSegment(
                         value: 'All',
                         label: Text('전체'),
                         icon: Icon(Icons.list),
@@ -520,6 +759,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                         _filterStatus = newSelection.first;
                       });
                       _loadUsers();
+                      _loadRecoveryRequests();
                     },
                   ),
                 ),
@@ -530,7 +770,57 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _users.isEmpty
+          : _filterStatus == 'Recovery'
+              ? _recoveryRequests.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
+                          const SizedBox(height: 16),
+                          Text(
+                            '계정 복구 요청이 없습니다',
+                            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: _recoveryRequests.length,
+                      itemBuilder: (context, index) {
+                        final request = _recoveryRequests[index];
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(12),
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.orange,
+                              child: Icon(Icons.restore, color: Colors.white),
+                            ),
+                            title: Text(
+                              request['name'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text('이메일: ${request['email']}'),
+                                Text('요청일: ${_formatDate(request['request_time'])}'),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios),
+                            onTap: () => _showRecoveryRequestDetails(request),
+                          ),
+                        );
+                      },
+                    )
+              : _users.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
