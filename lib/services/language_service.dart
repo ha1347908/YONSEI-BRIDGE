@@ -101,6 +101,18 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '저장된 게시물이 없습니다',
         'post_saved': '게시글이 저장되었습니다',
         'post_unsaved': '저장이 취소되었습니다',
+        
+        // Living Setup
+        'living_setup_title': '당신의 한국 생활, \'검색\'하지 말고 \'리빙셋업\' 하세요!',
+        'living_setup_intro': '한국에 도착한 순간부터 개강까지, 무엇을 해야 할지 몰라 막막하신가요?\n연세브릿지 리빙셋업이 유학생의 시계에 딱 맞춘 \'생존 타임라인\'을 보내드립니다.',
+        'living_setup_feature1_title': '📅 알아서 챙겨주는 일정',
+        'living_setup_feature1_desc': '수강신청, ARC 신청, 건강검진 등 놓치면 안 될 학사 일정을 미리 알려드려요.',
+        'living_setup_feature2_title': '🏠 바로 쓰는 생활 팁',
+        'living_setup_feature2_desc': '기숙사 보일러 작동법부터 쓰레기 분리수거, 유심 개통까지 영상과 사진으로 쉽게 설명합니다.',
+        'living_setup_feature3_title': '🚀 복잡한 인증 없이',
+        'living_setup_feature3_desc': '한국 휴대폰 번호가 없어도 괜찮아요! 가입 즉시 필수 정보를 확인하세요.',
+        'start_living_setup': '리빙셋업 시작하기',
+        'close': '닫기',
       },
       'en': {
         // App common
@@ -177,6 +189,18 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': 'No saved posts',
         'post_saved': 'Post saved',
         'post_unsaved': 'Post removed from saved',
+        
+        // Living Setup
+        'living_setup_title': 'Don\'t Waste Time Searching—Let \'Living Setup\' Handle Your Life in Korea!',
+        'living_setup_intro': 'Are you feeling overwhelmed and unsure of what to do from the moment you land in Korea until classes start? Yonsei-Bridge\'s Living Setup provides a "Survival Timeline" perfectly synced with your schedule.',
+        'living_setup_feature1_title': '📅 Automated Scheduling',
+        'living_setup_feature1_desc': 'We\'ll notify you of essential academic dates, such as course registration, ARC (Alien Registration Card) applications, and health checkups.',
+        'living_setup_feature2_title': '🏠 Practical Life Tips',
+        'living_setup_feature2_desc': 'From operating your dormitory boiler to waste disposal and SIM card activation, we explain everything clearly with photos and videos.',
+        'living_setup_feature3_title': '🚀 No Complex Authentication',
+        'living_setup_feature3_desc': 'It\'s okay if you don\'t have a Korean phone number yet! Access essential information immediately upon signing up.',
+        'start_living_setup': 'Start Living Setup',
+        'close': 'Close',
       },
       'zh': {
         // 应用通用
@@ -253,6 +277,18 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '暂无保存的帖子',
         'post_saved': '帖子已保存',
         'post_unsaved': '已取消保存',
+        
+        // Living Setup
+        'living_setup_title': '告别繁琐搜索，让\'Living Setup\'开启你的韩国生活！',
+        'living_setup_intro': '从抵达韩国那一刻起直至开学，你是否正因为不知所措而感到茫然？延世桥（Yonsei-Bridge）的 Living Setup 为留学生量身定制了完美的"生存时间轴"。',
+        'living_setup_feature1_title': '📅 自动提醒重要日程',
+        'living_setup_feature1_desc': '选课、ARC（外国人登录证）申请、健康检查等绝不能错过的学期安排，我们都会提前通知你。',
+        'living_setup_feature2_title': '🏠 实用的生活指南',
+        'living_setup_feature2_desc': '从宿舍地暖的使用方法到垃圾分类、SIM卡开通，我们将通过视频和照片为你详细解答。',
+        'living_setup_feature3_title': '🚀 无需复杂认证',
+        'living_setup_feature3_desc': '还没有韩国手机号？没关系！注册后即可立即查看所有核心生活资讯。',
+        'start_living_setup': '开始生活指南',
+        'close': '关闭',
       },
       'ja': {
         // アプリ共通
@@ -329,6 +365,18 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '保存した投稿がありません',
         'post_saved': '投稿を保存しました',
         'post_unsaved': '保存を解除しました',
+        
+        // Living Setup
+        'living_setup_title': '韓国生活、検索はもう卒業！『リビングセットアップ』にお任せください！',
+        'living_setup_intro': '韓国に到着した瞬間から開講まで、何をすべきか分からず不安ではありませんか？延世ブリッジ（Yonsei-Bridge）のリビングセットアップが、留学生のスケジュールにぴったり合わせた「生存タイムライン」をお届けします。',
+        'living_setup_feature1_title': '📅 お任せスケジュール管理',
+        'living_setup_feature1_desc': '履修登録、外国人登録（ARC）の申請、健康診断など、見逃せない学事日程を事前にお知らせします。',
+        'living_setup_feature2_title': '🏠 すぐに役立つ生活の知恵',
+        'living_setup_feature2_desc': '寄宿舎のボイラーの使い方からゴミの分別、USIMカードの開通まで、動画や写真で分かりやすく説明します。',
+        'living_setup_feature3_title': '🚀 複雑な認証は不要',
+        'living_setup_feature3_desc': '韓国の電話番号がなくても大丈夫！加入後すぐに、必要な情報を確認できます。',
+        'start_living_setup': 'リビングセットアップを開始',
+        'close': '閉じる',
       },
     };
   }

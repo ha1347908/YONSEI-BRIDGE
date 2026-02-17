@@ -7,6 +7,7 @@ import '../services/permission_service.dart';
 import 'board_screen.dart';
 import 'saved_posts_screen.dart';
 import 'settings_screen.dart';
+import 'living_setup_board_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -246,12 +247,22 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: InkWell(
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BoardScreen(category: category),
-            ),
-          );
+          // Living Setup uses dedicated screen with welcome dialog
+          if (category.id == 'living_setup') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LivingSetupBoardScreen(category: category),
+              ),
+            );
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BoardScreen(category: category),
+              ),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(16),
         child: Container(
