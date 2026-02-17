@@ -8,6 +8,7 @@ import 'login_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'admin_approval_screen.dart';
+import 'admin_notification_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -527,6 +528,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+                  );
+                },
+              ),
+              
+              ListTile(
+                leading: const Icon(Icons.notifications_active, color: Color(0xFF0038A8)),
+                title: const Text('알림 보내기'),
+                subtitle: const Text('사용자에게 알림 전송 (국가별 필터링)'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminNotificationScreen()),
                   );
                 },
               ),
