@@ -9,6 +9,7 @@ import 'terms_of_service_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'admin_approval_screen.dart';
 import 'admin_notification_screen.dart';
+import 'admin_dashboard_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -518,6 +519,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: Colors.grey,
                   ),
                 ),
+              ),
+              
+              ListTile(
+                leading: const Icon(Icons.dashboard, color: Color(0xFF0038A8)),
+                title: const Text('관리자 대시보드'),
+                subtitle: const Text('시스템 현황 및 통계'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+                  );
+                },
               ),
               
               ListTile(
