@@ -7,6 +7,8 @@ import '../services/language_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../models/country_data.dart';
 import '../models/chat_message_model.dart';
+import '../models/country_group_model.dart';
+import 'country_group_management_screen.dart';
 
 class AdminNotificationScreen extends StatefulWidget {
   const AdminNotificationScreen({super.key});
@@ -232,7 +234,34 @@ class _AdminNotificationScreenState extends State<AdminNotificationScreen> {
     return users;
   }
 
-  void _showCountrySelectionDialog() {
+  Future<List<CountryGroup>> _loadCountryGroups() async {
+    final prefs = await SharedPreferences.getInstance();
+    final groups = <CountryGroup>[];
+
+    final keys = prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith('country_group_')) {
+        final groupJson = prefs.getString(key);
+        if (groupJson != null) {
+          try {
+            final group = CountryGroup.fromJsonString(groupJson);
+            groups.add(group);
+          } catch (e) {
+            debugPrint('Error parsing country group: $e');
+          }
+        }
+      }
+    }
+
+    groups.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return groups;
+  }
+
+  void _showCountrySelectionDialog() async {
+    final savedGroups = await _loadCountryGroups();
+    
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -254,6 +283,128 @@ class _AdminNotificationScreenState extends State<AdminNotificationScreen> {
                 height: 500,
                 child: Column(
                   children: [
+                    // Saved groups section
+                    if (savedGroups.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            '⭐ 저장된 그룹',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const CountryGroupManagementScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.settings, size: 16),
+                            label: const Text('관리', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 120,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: savedGroups.length,
+                          itemBuilder: (context, index) {
+                            final group = savedGroups[index];
+                            final groupColor = Color(int.parse(group.color.substring(1), radix: 16) + 0xFF000000);
+                            final isSelected = _selectedCountries.toSet().containsAll(group.countries);
+
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  if (isSelected) {
+                                    // Deselect group countries
+                                    _selectedCountries.removeWhere((c) => group.countries.contains(c));
+                                  } else {
+                                    // Select group countries
+                                    for (final country in group.countries) {
+                                      if (!_selectedCountries.contains(country)) {
+                                        _selectedCountries.add(country);
+                                      }
+                                    }
+                                  }
+                                });
+                                setDialogState(() {});
+                              },
+                              child: Container(
+                                width: 140,
+                                margin: const EdgeInsets.only(right: 12),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? groupColor.withOpacity(0.1) : Colors.grey[100],
+                                  border: Border.all(
+                                    color: isSelected ? groupColor : Colors.grey[300]!,
+                                    width: isSelected ? 2 : 1,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: groupColor,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            group.name,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (isSelected)
+                                          Icon(Icons.check_circle, size: 16, color: groupColor),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '${group.countries.length}개 국가',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Expanded(
+                                      child: Text(
+                                        group.countries.take(3).join(', '),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[600],
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(height: 24),
+                    ],
                     // Search bar
                     TextField(
                       controller: _searchController,

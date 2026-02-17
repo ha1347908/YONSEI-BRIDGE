@@ -10,6 +10,7 @@ import 'privacy_policy_screen.dart';
 import 'admin_approval_screen.dart';
 import 'admin_notification_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'country_group_management_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -553,6 +554,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const AdminNotificationScreen()),
+                  );
+                },
+              ),
+              
+              ListTile(
+                leading: const Icon(Icons.folder_special, color: Color(0xFF0038A8)),
+                title: const Text('국가 그룹 관리'),
+                subtitle: const Text('즐겨찾는 국가 그룹 저장 및 관리'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CountryGroupManagementScreen()),
                   );
                 },
               ),
