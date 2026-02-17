@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import 'board_screen.dart';
+import 'simple_chat_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final Post post;
@@ -72,6 +73,122 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       }
     }
+  }
+
+  Future<void> _showAuthorProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('user_id');
+    final currentUserName = prefs.getString('nickname') ?? 'User';
+
+    // Get author info
+    final authorId = widget.post.authorId;
+    final authorName = widget.post.author;
+    final authorNationality = prefs.getString('demo_nationality_$authorId') ?? 'Unknown';
+    final authorContact = prefs.getString('demo_contact_$authorId') ?? 'Not provided';
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Profile picture
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFF0038A8),
+                child: Text(
+                  authorName.isNotEmpty ? authorName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Author name
+              Text(
+                authorName,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              
+              // Nationality
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.flag, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    authorNationality,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                      label: const Text('닫기'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        // Navigate to chat with this user
+                        if (currentUserId != null) {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SimpleChatScreen(
+                                currentUserId: currentUserId,
+                                currentUserName: currentUserName,
+                                otherUserId: authorId,
+                                otherUserName: authorName,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.message),
+                      label: const Text('메시지'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6B4EFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -155,17 +272,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ),
                     ),
                   const SizedBox(width: 8),
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.grey[300],
-                    child: const Icon(Icons.person, size: 16),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.post.author,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  InkWell(
+                    onTap: widget.post.isAdminPost ? null : _showAuthorProfile,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: Colors.grey[300],
+                          child: const Icon(Icons.person, size: 16),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.post.author,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: widget.post.isAdminPost ? Colors.black87 : const Color(0xFF0038A8),
+                            decoration: widget.post.isAdminPost ? null : TextDecoration.underline,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),

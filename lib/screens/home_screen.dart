@@ -8,7 +8,7 @@ import 'board_screen.dart';
 import 'saved_posts_screen.dart';
 import 'settings_screen.dart';
 import 'living_setup_board_screen.dart';
-import 'simple_chat_screen.dart';
+import 'chat_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -149,27 +149,13 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () async {
-              // Get current user info
-              final prefs = await SharedPreferences.getInstance();
-              final currentUserId = prefs.getString('user_id') ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
-              final currentUserName = prefs.getString('nickname') ?? 'Me';
-              
-              // For demo purposes, use a placeholder for "other user"
-              // In a real app, this would come from a user list or contact selection
-              if (mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SimpleChatScreen(
-                      currentUserId: currentUserId,
-                      currentUserName: currentUserName,
-                      otherUserId: 'support_admin',
-                      otherUserName: 'YONSEI BRIDGE Support',
-                    ),
-                  ),
-                );
-              }
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ChatListScreen(),
+                ),
+              );
             },
             tooltip: languageService.translate('chat'),
           ),

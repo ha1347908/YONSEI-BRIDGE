@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../services/language_service.dart';
+import '../widgets/country_search_dropdown.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -21,7 +22,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
   final _nicknameController = TextEditingController(); // 별명 필드 추가
-  final _nationalityController = TextEditingController();
+  String? _selectedNationality; // Country dropdown selection
   final _contactController = TextEditingController();
   XFile? _studentIdImage;
   bool _isLoading = false;
@@ -40,7 +41,6 @@ class _SignupScreenState extends State<SignupScreen> {
     _confirmPasswordController.dispose();
     _nameController.dispose();
     _nicknameController.dispose(); // 별명 컨트롤러 dispose
-    _nationalityController.dispose();
     _contactController.dispose();
     _departmentSearchController.dispose();
     super.dispose();
@@ -223,7 +223,10 @@ For full details, please review our Privacy Policy in Settings.''';
   }
 
   Future<void> _submitSignup() async {
-    if (_formKey.currentState!.validate() && _studentIdImage != null) {
+    // Validate form and check if nationality and student ID are provided
+    if (_formKey.currentState!.validate() && 
+        _selectedNationality != null && 
+        _studentIdImage != null) {
       setState(() {
         _isLoading = true;
       });
@@ -242,7 +245,7 @@ For full details, please review our Privacy Policy in Settings.''';
         await prefs.setString('demo_user_$userId', userId);
         await prefs.setString('demo_name_$userId', _nameController.text.trim());
         await prefs.setString('demo_nickname_$userId', _nicknameController.text.trim()); // 별명 저장
-        await prefs.setString('demo_nationality_$userId', _nationalityController.text.trim());
+        await prefs.setString('demo_nationality_$userId', _selectedNationality ?? 'Unknown');
         await prefs.setString('demo_contact_$userId', _contactController.text.trim());
         await prefs.setString('demo_password_$userId', _passwordController.text);
         await prefs.setString('demo_status_$userId', 'Pending');
@@ -489,21 +492,22 @@ For full details, please review our Privacy Policy in Settings.''';
                           },
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _nationalityController,
-                          decoration: const InputDecoration(
-                            labelText: '국적',
-                            prefixIcon: Icon(Icons.flag),
-                            border: OutlineInputBorder(),
-                            hintText: '예: Korea, China, Japan',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return '국적을 입력해주세요';
-                            }
-                            return null;
+                        // Country selection dropdown
+                        CountrySearchDropdown(
+                          initialValue: _selectedNationality,
+                          hintText: '국가 / 국적 (Nationality / Country of Origin)',
+                          onCountrySelected: (country) {
+                            setState(() => _selectedNationality = country);
                           },
                         ),
+                        if (_selectedNationality == null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 12, top: 4),
+                            child: Text(
+                              '국적을 선택해주세요',
+                              style: TextStyle(color: Colors.red[700], fontSize: 12),
+                            ),
+                          ),
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _contactController,
