@@ -153,6 +153,15 @@ class LanguageService extends ChangeNotifier {
         // Account Recovery
         'account_recovery': '계정 복구',
         'account_recovery_guide': '계정 복구 안내',
+        'account_recovery_title': '계정을 복구하시겠습니까?',
+        'account_recovery_desc': '계정 복구 절차는 다음과 같습니다:',
+        'recovery_step1': '1. 관리자에게 연락하기',
+        'recovery_step1_desc': '연세브릿지 관리자에게 이메일(admin@yonseibridge.com)로 연락주세요.',
+        'recovery_step2': '2. 본인 인증',
+        'recovery_step2_desc': '학생증 또는 재학증명서를 제출하여 본인임을 증명해주세요.',
+        'recovery_step3': '3. 계정 복구 처리',
+        'recovery_step3_desc': '관리자가 확인 후 24시간 내에 계정을 복구해드립니다.',
+        'contact_admin': '관리자에게 연락',
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': '아르바이트는 입국 후 6개월이 지나야 가능합니다',
@@ -284,6 +293,15 @@ class LanguageService extends ChangeNotifier {
         // Account Recovery
         'account_recovery': 'Account Recovery',
         'account_recovery_guide': 'Account Recovery Guide',
+        'account_recovery_title': 'Would you like to recover your account?',
+        'account_recovery_desc': 'Account recovery procedure:',
+        'recovery_step1': '1. Contact Administrator',
+        'recovery_step1_desc': 'Please email the Yonsei Bridge administrator at admin@yonseibridge.com.',
+        'recovery_step2': '2. Identity Verification',
+        'recovery_step2_desc': 'Submit your student ID or enrollment certificate to verify your identity.',
+        'recovery_step3': '3. Account Recovery Process',
+        'recovery_step3_desc': 'After verification, your account will be recovered within 24 hours.',
+        'contact_admin': 'Contact Administrator',
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': 'Part-time work is only allowed 6 months after arrival',
@@ -415,6 +433,15 @@ class LanguageService extends ChangeNotifier {
         // Account Recovery
         'account_recovery': '账户恢复',
         'account_recovery_guide': '账户恢复指南',
+        'account_recovery_title': '您想恢复账户吗？',
+        'account_recovery_desc': '账户恢复流程如下：',
+        'recovery_step1': '1. 联系管理员',
+        'recovery_step1_desc': '请发送邮件至延世桥管理员邮箱：admin@yonseibridge.com',
+        'recovery_step2': '2. 身份验证',
+        'recovery_step2_desc': '提交学生证或在读证明以验证您的身份。',
+        'recovery_step3': '3. 账户恢复处理',
+        'recovery_step3_desc': '验证后，您的账户将在24小时内恢复。',
+        'contact_admin': '联系管理员',
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': '入境6个月后才可以打工',
@@ -546,6 +573,15 @@ class LanguageService extends ChangeNotifier {
         // Account Recovery
         'account_recovery': 'アカウント回復',
         'account_recovery_guide': 'アカウント回復ガイド',
+        'account_recovery_title': 'アカウントを回復しますか？',
+        'account_recovery_desc': 'アカウント回復手順：',
+        'recovery_step1': '1. 管理者に連絡',
+        'recovery_step1_desc': '延世ブリッジ管理者(admin@yonseibridge.com)にメールでご連絡ください。',
+        'recovery_step2': '2. 本人確認',
+        'recovery_step2_desc': '学生証または在学証明書を提出して本人確認を行ってください。',
+        'recovery_step3': '3. アカウント回復処理',
+        'recovery_step3_desc': '確認後、24時間以内にアカウントを回復いたします。',
+        'contact_admin': '管理者に連絡',
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': 'アルバイトは入国6ヶ月後から可能です',
