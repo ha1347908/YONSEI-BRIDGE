@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/language_service.dart';
 import '../models/user_profile_extended.dart';
 
@@ -160,17 +161,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop(); // Go back to previous screen
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('living_setup_profile_completed', true);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop(true); // Return true to indicate completion
+                        }
                       },
                       child: Text(lang.translate('skip')),
                     ),
                     ElevatedButton(
-                      onPressed: () {
-                        // TODO: Request notification permission
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop(); // Go back to previous screen
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('living_setup_profile_completed', true);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          Navigator.of(context).pop(true); // Return true to indicate completion
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0038A8),
