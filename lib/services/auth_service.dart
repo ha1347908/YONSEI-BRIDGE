@@ -101,10 +101,24 @@ class AuthService extends ChangeNotifier {
         throw Exception('Please enter a valid email address (e.g. user@gmail.com)');
       }
 
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      UserCredential? credential;
+      try {
+        credential = await _auth.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } on FirebaseAuthException catch (authEx) {
+        // Firebase Auth not activated → fallback to Firestore-only login
+        if (authEx.code == 'operation-not-allowed' ||
+            authEx.code == 'configuration-not-found' ||
+            authEx.code == 'channel-error' ||
+            authEx.code == 'admin-restricted-operation') {
+          if (kDebugMode) debugPrint('[AuthService] Firebase Auth not enabled, falling back to Firestore login');
+          await _firestoreFallbackLogin(email, password, rememberMe);
+          return;
+        }
+        rethrow;
+      }
 
       final uid = credential.user!.uid;
 
@@ -152,6 +166,51 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Firestore-only login fallback (when Firebase Auth is not yet enabled)
+  Future<void> _firestoreFallbackLogin(
+    String email,
+    String password,
+    bool rememberMe,
+  ) async {
+    // Find user by email in Firestore
+    final userData = await _fs.getUserByEmail(email);
+    if (userData == null) {
+      throw Exception('No account found with that email address. Please sign up first.');
+    }
+
+    // Check stored password (plain text fallback - only used before Auth is enabled)
+    final storedPassword = userData['password'] as String?;
+    if (storedPassword != null && storedPassword != password) {
+      throw Exception('Incorrect email or password.');
+    }
+
+    final status = userData['status'] as String? ?? 'Pending';
+    switch (status) {
+      case 'Pending':
+        throw PendingApprovalException();
+      case 'Blocked':
+        throw BlockedException(userData['status_reason'] as String?);
+      case 'Rejected':
+        throw RejectedException(userData['status_reason'] as String?);
+      case 'Approved':
+        break;
+      default:
+        throw Exception('Account status: $status');
+    }
+
+    final nickname = userData['nickname'] as String?;
+    final name = userData['name'] as String?;
+    final uid = userData['uid'] as String? ?? email;
+
+    await _setSession(
+      userId: uid,
+      userName: nickname ?? name ?? email,
+      permission: userData['permission'] as String? ?? 'user',
+      canDelete: true,
+      rememberMe: rememberMe,
+    );
+  }
+
   Future<String> signUp({
     required String email,
     required String password,
@@ -160,6 +219,14 @@ class AuthService extends ChangeNotifier {
     required String nationality,
     required String contact,
   }) async {
+    // Validate inputs before calling Firebase
+    if (email.trim().isEmpty || !email.contains('@')) {
+      throw Exception('Please enter a valid email address.');
+    }
+    if (password.isEmpty || password.length < 8) {
+      throw Exception('Password must be at least 8 characters.');
+    }
+
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -184,7 +251,32 @@ class AuthService extends ChangeNotifier {
       await _auth.signOut();
       return uid;
     } on FirebaseAuthException catch (e) {
+      if (kDebugMode) debugPrint('[AuthService] signUp FirebaseAuthException code=${e.code} msg=${e.message}');
+      // Firebase Auth not enabled yet → fallback: save to Firestore only
+      if (e.code == 'operation-not-allowed' ||
+          e.code == 'configuration-not-found' ||
+          e.code == 'channel-error' ||
+          e.code == 'admin-restricted-operation') {
+        // Use email as document ID (safe fallback)
+        final fallbackUid = 'pending_${email.trim().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+        await _fs.createUser(
+          uid: fallbackUid,
+          email: email.trim(),
+          name: name,
+          nickname: nickname,
+          nationality: nationality,
+          contact: contact,
+          status: 'Pending',
+          role: 'User',
+          permission: 'user',
+          password: password, // stored for fallback login before Auth is enabled
+        );
+        return fallbackUid;
+      }
       throw Exception(_mapFirebaseAuthError(e.code));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[AuthService] signUp error: $e');
+      rethrow;
     }
   }
 
