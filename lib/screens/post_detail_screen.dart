@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
+import '../models/post_model.dart';
 import 'board_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
@@ -76,14 +77,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _showAuthorProfile() async {
     final prefs = await SharedPreferences.getInstance();
-    final currentUserId = prefs.getString('user_id');
-    final currentUserName = prefs.getString('nickname') ?? 'User';
 
     // Get author info
     final authorId = widget.post.authorId;
     final authorName = widget.post.author;
     final authorNationality = prefs.getString('demo_nationality_$authorId') ?? 'Unknown';
-    final authorContact = prefs.getString('demo_contact_$authorId') ?? 'Not provided';
 
     if (!mounted) return;
 
@@ -296,6 +294,32 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         ),
                       ),
                     ),
+                  // 정보게시판 카테고리 배지
+                  if (widget.post.infoCategory != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _infoCategoryColor(widget.post.infoCategory!)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: _infoCategoryColor(widget.post.infoCategory!)
+                              .withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Text(
+                        widget.post.infoCategory!.label,
+                        style: TextStyle(
+                          color:
+                              _infoCategoryColor(widget.post.infoCategory!),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   InkWell(
                     onTap: widget.post.isAdminPost ? null : _showAuthorProfile,
@@ -389,5 +413,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   String _formatDate(DateTime date) {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')} '
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  Color _infoCategoryColor(InfoCategory cat) {
+    switch (cat) {
+      case InfoCategory.mireaCampus:
+        return const Color(0xFF0038A8);
+      case InfoCategory.wonju:
+        return const Color(0xFF00897B);
+      case InfoCategory.korea:
+        return const Color(0xFFE53935);
+    }
   }
 }
