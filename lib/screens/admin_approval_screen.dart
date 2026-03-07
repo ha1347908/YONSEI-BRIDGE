@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
 
 class AdminApprovalScreen extends StatefulWidget {
   const AdminApprovalScreen({super.key});
@@ -10,10 +10,16 @@ class AdminApprovalScreen extends StatefulWidget {
 }
 
 class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
+  final FirestoreService _fs = FirestoreService();
+
   String _filterStatus = 'Pending';
+  bool _isLoading = false;
+
+  // ── Tab: Users ────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> _users = [];
+
+  // ── Tab: Recovery Requests ────────────────────────────────────────────────
   List<Map<String, dynamic>> _recoveryRequests = [];
-  bool _isLoading = true;
   int _unreadRecoveryCount = 0;
 
   @override
@@ -21,221 +27,211 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
     super.initState();
     _loadUsers();
     _loadRecoveryRequests();
-    _loadUnreadRecoveryCount();
   }
 
-  Future<void> _loadUnreadRecoveryCount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final notifs = prefs.getStringList('admin_recovery_notifications') ?? [];
-    int unread = 0;
-    for (final n in notifs) {
-      try {
-        final map = jsonDecode(n) as Map<String, dynamic>;
-        if (map['read'] == false) unread++;
-      } catch (_) {}
-    }
-    if (mounted) setState(() => _unreadRecoveryCount = unread);
-  }
+  // ══════════════════════════════════════════════════════════════════════════
+  // DATA LOADING
+  // ══════════════════════════════════════════════════════════════════════════
 
-  Future<void> _markRecoveryNotificationsRead() async {
-    final prefs = await SharedPreferences.getInstance();
-    final notifs = prefs.getStringList('admin_recovery_notifications') ?? [];
-    final updated = notifs.map((n) {
-      try {
-        final map = jsonDecode(n) as Map<String, dynamic>;
-        map['read'] = true;
-        return jsonEncode(map);
-      } catch (_) {
-        return n;
+  Future<void> _loadUsers() async {
+    setState(() => _isLoading = true);
+    try {
+      final snap = _filterStatus == 'All'
+          ? await _fs.usersCol.get()
+          : await _fs.usersCol
+              .where('status', isEqualTo: _filterStatus)
+              .get();
+
+      final users = snap.docs.map((d) {
+        final data = d.data();
+        data['uid'] = d.id;
+        return data;
+      }).toList();
+
+      // Sort by created_at descending (in memory – no composite index needed)
+      users.sort((a, b) {
+        final aT = a['created_at'];
+        final bT = b['created_at'];
+        if (aT == null || bT == null) return 0;
+        if (aT is Timestamp && bT is Timestamp) return bT.compareTo(aT);
+        return 0;
+      });
+
+      if (mounted) setState(() => _users = users);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load users: $e'), backgroundColor: Colors.red),
+        );
       }
-    }).toList();
-    await prefs.setStringList('admin_recovery_notifications', updated);
-    if (mounted) setState(() => _unreadRecoveryCount = 0);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _loadRecoveryRequests() async {
-    final prefs = await SharedPreferences.getInstance();
-    final allKeys = prefs.getKeys();
-    
-    final requests = <Map<String, dynamic>>[];
-    
-    for (final key in allKeys) {
-      if (key.startsWith('recovery_request_')) {
-        final email = key.replaceFirst('recovery_request_', '');
-        final status = prefs.getString('recovery_status_$email') ?? 'Pending';
-        final requestTime = prefs.getString('recovery_request_$email');
-        
-        if (_filterStatus == 'Recovery' || _filterStatus == 'All') {
-          requests.add({
-            'email': email,
-            'status': status,
-            'request_time': requestTime != null ? DateTime.parse(requestTime) : DateTime.now(),
-            'name': prefs.getString('demo_name_$email') ?? 'Unknown',
-          });
-        }
+    try {
+      final snap = await _fs.recoveryCol.get();
+      final requests = snap.docs.map((d) {
+        final data = d.data();
+        data['doc_id'] = d.id;
+        return data;
+      }).toList();
+
+      // Sort by requested_at descending
+      requests.sort((a, b) {
+        final aT = a['requested_at'];
+        final bT = b['requested_at'];
+        if (aT == null || bT == null) return 0;
+        if (aT is Timestamp && bT is Timestamp) return bT.compareTo(aT);
+        return 0;
+      });
+
+      final unread = requests.where((r) => r['read_by_admin'] == false).length;
+
+      if (mounted) {
+        setState(() {
+          _recoveryRequests = requests;
+          _unreadRecoveryCount = unread;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load recovery requests: $e'), backgroundColor: Colors.red),
+        );
       }
     }
-    
-    setState(() {
-      _recoveryRequests = requests;
-    });
   }
 
-  Future<void> _loadUsers() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    final prefs = await SharedPreferences.getInstance();
-    final allKeys = prefs.getKeys();
-    
-    final users = <Map<String, dynamic>>[];
-    
-    // Load demo accounts
-    if (_filterStatus == 'All' || _filterStatus == 'Pending') {
-      users.add({
-        'user_id': 'pending_user',
-        'name': '대기 중 사용자',
-        'nationality': 'China',
-        'contact': '010-9876-5432',
-        'status': 'Pending',
-        'created_at': DateTime.now().subtract(const Duration(days: 1)),
-      });
-    }
-    
-    if (_filterStatus == 'All' || _filterStatus == 'Approved') {
-      users.add({
-        'user_id': 'testuser',
-        'name': '테스트 사용자',
-        'nationality': 'Korea',
-        'contact': '010-1234-5678',
-        'status': 'Approved',
-        'created_at': DateTime.now().subtract(const Duration(days: 2)),
-      });
-      
-      users.add({
-        'user_id': 'admin',
-        'name': 'System Administrator',
-        'nationality': 'Korea',
-        'contact': 'admin@yonseibridge.com',
-        'status': 'Approved',
-        'created_at': DateTime.now().subtract(const Duration(days: 30)),
-      });
-    }
-    
-    // Load custom registered users
-    for (final key in allKeys) {
-      if (key.startsWith('demo_user_')) {
-        final userId = key.replaceFirst('demo_user_', '');
-        final status = prefs.getString('demo_status_$userId') ?? 'Pending';
-        
-        if (_filterStatus == 'All' || _filterStatus == status) {
-          final photoBase64 = prefs.getString('demo_photo_$userId');
-          users.add({
-            'user_id': userId,
-            'name': prefs.getString('demo_name_$userId') ?? userId,
-            'nickname': prefs.getString('demo_nickname_$userId') ?? '',
-            'nationality': prefs.getString('demo_nationality_$userId') ?? 'Unknown',
-            'contact': prefs.getString('demo_contact_$userId') ?? 'N/A',
-            'password': prefs.getString('demo_password_$userId') ?? '(없음)',
-            'status': status,
-            'created_at': DateTime.now(),
-            'id_photo_base64': photoBase64,
-          });
-        }
+  Future<void> _markAllRecoveryRead() async {
+    final batch = FirebaseFirestore.instance.batch();
+    for (final r in _recoveryRequests) {
+      if (r['read_by_admin'] == false) {
+        final docId = r['doc_id'] as String? ?? r['email'] as String;
+        batch.update(_fs.recoveryCol.doc(docId), {'read_by_admin': true});
       }
     }
-    
-    setState(() {
-      _users = users;
-      _isLoading = false;
-    });
+    await batch.commit();
+    if (mounted) setState(() => _unreadRecoveryCount = 0);
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // USER ACTIONS
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _approveUser(Map<String, dynamic> user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('demo_status_${user['user_id']}', 'Approved');
-    
-    // 승인 후 학생증 사진 즉시 삭제
-    await prefs.remove('demo_photo_${user['user_id']}');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${user['name']} (${user['user_id']}) 승인 완료 - 학생증 사진 삭제됨'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _loadUsers();
+    try {
+      await _fs.updateUserStatus(user['uid'] as String, 'Approved');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${user['name'] ?? user['email']} approved'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadUsers();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectUser(Map<String, dynamic> user, String reason) async {
+    try {
+      await _fs.updateUserStatus(user['uid'] as String, 'Rejected', reason: reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${user['name'] ?? user['email']} rejected'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        await _loadUsers();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   Future<void> _blockUser(Map<String, dynamic> user, String reason) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('demo_status_${user['user_id']}', 'Blocked');
-    await prefs.setString('demo_block_reason_${user['user_id']}', reason);
-    
-    // 차단 후 학생증 사진 즉시 삭제
-    await prefs.remove('demo_photo_${user['user_id']}');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${user['name']} (${user['user_id']}) 차단 완료 - 학생증 사진 삭제됨'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      // 상태 필터를 'Blocked'로 변경하고 목록 다시 로드
-      setState(() {
-        _filterStatus = 'Blocked';
-      });
-      _loadUsers();
+    try {
+      await _fs.updateUserStatus(user['uid'] as String, 'Blocked', reason: reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${user['name'] ?? user['email']} blocked'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _filterStatus = 'Blocked');
+        await _loadUsers();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   Future<void> _unblockUser(Map<String, dynamic> user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('demo_status_${user['user_id']}', 'Approved');
-    await prefs.remove('demo_block_reason_${user['user_id']}');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${user['name']} (${user['user_id']}) 차단 해제 완료'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      // 상태 필터를 'Approved'로 변경하고 목록 다시 로드
-      setState(() {
-        _filterStatus = 'Approved';
-      });
-      _loadUsers();
+    try {
+      await _fs.updateUserStatus(user['uid'] as String, 'Approved');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${user['name'] ?? user['email']} unblocked'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() => _filterStatus = 'Approved');
+        await _loadUsers();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // DIALOGS
+  // ══════════════════════════════════════════════════════════════════════════
+
   void _showBlockDialog(Map<String, dynamic> user) {
     final reasonController = TextEditingController();
-    
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('사용자 차단'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Block User'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('사용자: ${user['name']} (${user['user_id']})'),
+            Text('User: ${user['name'] ?? user['email']}'),
             const SizedBox(height: 8),
             const Text(
-              '차단된 사용자는 로그인이 불가능합니다.',
+              'Blocked users cannot log in.',
               style: TextStyle(color: Colors.red, fontSize: 12),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: reasonController,
               decoration: const InputDecoration(
-                labelText: '차단 사유',
-                hintText: '예: 이용 규칙 위반, 부적절한 게시물',
+                labelText: 'Block Reason',
+                hintText: 'e.g. Terms of Service violation',
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
@@ -244,19 +240,17 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               _blockUser(user, reasonController.text);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('차단'),
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Block'),
           ),
         ],
       ),
@@ -266,53 +260,274 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   void _showUnblockDialog(Map<String, dynamic> user) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('차단 해제'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unblock User'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('사용자: ${user['name']} (${user['user_id']})'),
+            Text('User: ${user['name'] ?? user['email']}'),
             const SizedBox(height: 8),
             const Text(
-              '차단을 해제하면 사용자가 다시 로그인할 수 있습니다.',
+              'The user will be able to log in again.',
               style: TextStyle(fontSize: 12),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               _unblockUser(user);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('차단 해제'),
+                backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('Unblock'),
           ),
         ],
       ),
     );
   }
 
-  void _showRecoveryRequestDetails(Map<String, dynamic> request) {
+  void _showRejectDialog(Map<String, dynamic> user) {
+    final reasonController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('계정 복구 요청 상세'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejection Reason'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildInfoRow('이름', request['name']),
-            _buildInfoRow('이메일', request['email']),
-            _buildInfoRow('요청일', _formatDate(request['request_time'])),
+            Text('User: ${user['name'] ?? user['email']}'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Rejection Reason',
+                hintText: 'e.g. Unclear student ID photo',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _rejectUser(user, reasonController.text);
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUserDetails(Map<String, dynamic> user) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          builder: (ctx, scrollController) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0038A8),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '${user['name'] ?? 'Unknown'} (${user['email'] ?? ''})',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      _buildStatusChip(user['status'] as String? ?? ''),
+                    ],
+                  ),
+                ),
+                // Content
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // Basic info
+                      _buildInfoSection('Basic Information', [
+                        _buildInfoRow('Email (Login ID)', user['email'] ?? '—'),
+                        _buildInfoRow('Full Name', user['name'] ?? '—'),
+                        if ((user['nickname'] as String? ?? '').isNotEmpty)
+                          _buildInfoRow('Nickname', user['nickname'] as String),
+                        _buildInfoRow('Nationality', user['nationality'] ?? '—'),
+                        _buildInfoRow('Contact', user['contact'] ?? '—'),
+                        _buildInfoRow('Role', user['role'] ?? '—'),
+                        _buildInfoRow('Applied', _formatTimestamp(user['created_at'])),
+                        if ((user['status_reason'] as String? ?? '').isNotEmpty)
+                          _buildInfoRow('Status Reason', user['status_reason'] as String),
+                      ]),
+                      const SizedBox(height: 16),
+
+                      // UID info
+                      _buildInfoSection('Account ID', [
+                        _buildInfoRow('Firebase UID', user['uid'] ?? '—'),
+                      ]),
+                      const SizedBox(height: 16),
+
+                      // Admin-only warning
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.lock_outline, color: Colors.orange, size: 16),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Admin-only information — do not share externally',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Action buttons
+                      if (user['status'] == 'Pending')
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _showRejectDialog(user);
+                                },
+                                icon: const Icon(Icons.close),
+                                label: const Text('Reject'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.all(16),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _approveUser(user);
+                                },
+                                icon: const Icon(Icons.check),
+                                label: const Text('Approve'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.all(16),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (user['status'] == 'Approved')
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showBlockDialog(user);
+                            },
+                            icon: const Icon(Icons.block),
+                            label: const Text('Block User'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(16),
+                            ),
+                          ),
+                        ),
+                      if (user['status'] == 'Blocked')
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showUnblockDialog(user);
+                            },
+                            icon: const Icon(Icons.check_circle),
+                            label: const Text('Unblock'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(16),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showRecoveryDetails(Map<String, dynamic> request) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Account Recovery Request'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('Email', request['email'] ?? '—'),
+            _buildInfoRow('Requested', _formatTimestamp(request['requested_at'])),
+            _buildInfoRow('Status', request['status'] ?? '—'),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -325,14 +540,14 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '📧 처리 방법:',
+                    'How to process:',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '1. 등록된 이메일로 본인 확인 메일 발송\n'
-                    '2. 사용자 확인 후 아래 승인 버튼 클릭\n'
-                    '3. 임시 비밀번호를 이메일로 전송',
+                    '1. Verify the user by sending a confirmation email\n'
+                    '2. Click Approve after confirming identity\n'
+                    '3. Send a temporary password to the user\'s email',
                     style: TextStyle(fontSize: 12, height: 1.5),
                   ),
                 ],
@@ -342,19 +557,17 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               _approveRecoveryRequest(request);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('복구 승인'),
+                backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('Approve Recovery'),
           ),
         ],
       ),
@@ -362,369 +575,77 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   }
 
   Future<void> _approveRecoveryRequest(Map<String, dynamic> request) async {
-    final prefs = await SharedPreferences.getInstance();
-    final email = request['email'];
-    
-    // Generate temporary password
-    final tempPassword = 'Temp${DateTime.now().millisecondsSinceEpoch % 10000}!';
-    
-    // Update password
-    await prefs.setString('demo_password_$email', tempPassword);
-    
-    // Remove recovery request
-    await prefs.remove('recovery_request_$email');
-    await prefs.remove('recovery_status_$email');
-    
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('복구 승인 완료'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('계정 복구가 승인되었습니다.\n\n임시 비밀번호:'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  tempPassword,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+    final docId = request['doc_id'] as String? ?? request['email'] as String;
+    final tempPw = 'Temp${DateTime.now().millisecondsSinceEpoch % 10000}!';
+
+    try {
+      await _fs.recoveryCol.doc(docId).update({
+        'status': 'Approved',
+        'temp_password': tempPw,
+        'approved_at': FieldValue.serverTimestamp(),
+        'read_by_admin': true,
+      });
+
+      await _loadRecoveryRequests();
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Recovery Approved'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Recovery has been approved.\n\nTemporary password:'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    tempPw,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '📧 이 비밀번호를 사용자 이메일(${request['email']})로 전송해주세요.',
-                style: const TextStyle(fontSize: 12),
+                const SizedBox(height: 12),
+                Text(
+                  'Please send this password to the user\'s email (${request['email']}).',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0038A8),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
               ),
             ],
           ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _loadRecoveryRequests();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0038A8),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('확인'),
-            ),
-          ],
-        ),
-      );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
-  Future<void> _rejectUser(Map<String, dynamic> user, String reason) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('demo_status_${user['user_id']}', 'Rejected');
-    await prefs.setString('demo_rejection_reason_${user['user_id']}', reason);
-    
-    // 거부 후 학생증 사진 즉시 삭제
-    await prefs.remove('demo_photo_${user['user_id']}');
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${user['name']} (${user['user_id']}) 거부 완료 - 학생증 사진 삭제됨'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      _loadUsers();
-    }
-  }
-
-  void _showRejectDialog(Map<String, dynamic> user) {
-    final reasonController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('가입 거부 사유'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('사용자: ${user['name']} (${user['user_id']})'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: '거부 사유',
-                hintText: '예: 학생증 사진 불명확, 정보 불일치',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _rejectUser(user, reasonController.text);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('거부'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showUserDetails(Map<String, dynamic> user) {
-    bool _obscurePassword = true; // local state for password visibility
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        minChildSize: 0.5,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0038A8),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    Expanded(
-                      child: Text(
-                        '${user['name']} (${user['user_id']})',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    _buildStatusChip(user['status']),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    _buildInfoSection('기본 정보', [
-                      _buildInfoRow('아이디 (이메일)', user['user_id']),
-                      _buildInfoRow('이름', user['name']),
-                      if ((user['nickname'] ?? '').isNotEmpty)
-                        _buildInfoRow('닉네임', user['nickname']),
-                      _buildInfoRow('국적', user['nationality']),
-                      _buildInfoRow('연락처', user['contact']),
-                      _buildInfoRow('신청일', _formatDate(user['created_at'])),
-                    ]),
-                    const SizedBox(height: 16),
-                    // ── 비밀번호 섹션 ──
-                    if (user['password'] != null)
-                      _buildInfoSection('계정 보안', [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const SizedBox(
-                                width: 80,
-                                child: Text(
-                                  '비밀번호',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  _obscurePassword
-                                      ? '●' * (user['password'] as String).length
-                                      : user['password'],
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    letterSpacing: _obscurePassword ? 2 : 0,
-                                    fontFamily: _obscurePassword ? null : 'monospace',
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: const Color(0xFF0038A8),
-                                ),
-                                tooltip: _obscurePassword ? '비밀번호 보기' : '비밀번호 숨기기',
-                                onPressed: () {
-                                  setModalState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.lock_outline, color: Colors.orange, size: 16),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '관리자 전용 정보 — 외부에 절대 공유하지 마세요',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ]),
-                    const SizedBox(height: 24),
-                    if (user['id_photo_base64'] != null) ...[
-                      _buildInfoSection('학생증 사진', [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            base64Decode(user['id_photo_base64']),
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                height: 200,
-                                color: Colors.grey[200],
-                                child: const Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                                      SizedBox(height: 8),
-                                      Text('사진 로드 실패'),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ]),
-                      const SizedBox(height: 24),
-                    ],
-                    if (user['status'] == 'Pending')
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _showRejectDialog(user);
-                              },
-                              icon: const Icon(Icons.close),
-                              label: const Text('거부'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.all(16),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _approveUser(user);
-                              },
-                              icon: const Icon(Icons.check),
-                              label: const Text('승인'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.all(16),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    if (user['status'] == 'Approved')
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showBlockDialog(user);
-                        },
-                        icon: const Icon(Icons.block),
-                        label: const Text('사용자 차단'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                    if (user['status'] == 'Blocked')
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showUnblockDialog(user);
-                        },
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('차단 해제'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      ),
-    );
-  }
+  // ══════════════════════════════════════════════════════════════════════════
+  // HELPER WIDGETS
+  // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildInfoSection(String title, List<Widget> children) {
     return Column(
@@ -733,16 +654,16 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         Text(
           title,
           style: const TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Color(0xFF0038A8),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Card(
           elevation: 2,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(children: children),
           ),
         ),
@@ -752,22 +673,19 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
 
   Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(
               label,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
             ),
           ),
           Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 16)),
+            child: Text(value, style: const TextStyle(fontSize: 14)),
           ),
         ],
       ),
@@ -775,59 +693,64 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   }
 
   Widget _buildStatusChip(String status) {
-    Color color;
-    String label;
-    
-    switch (status) {
-      case 'Pending':
-        color = Colors.orange;
-        label = '대기중';
-        break;
-      case 'Approved':
-        color = Colors.green;
-        label = '승인됨';
-        break;
-      case 'Rejected':
-        color = Colors.red;
-        label = '거부됨';
-        break;
-      case 'Blocked':
-        color = Colors.black;
-        label = '차단됨';
-        break;
-      default:
-        color = Colors.grey;
-        label = status;
-    }
-    
+    final Map<String, Color> colors = {
+      'Pending': Colors.orange,
+      'Approved': Colors.green,
+      'Rejected': Colors.red,
+      'Blocked': Colors.black87,
+    };
     return Chip(
       label: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
+        status,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
       ),
-      backgroundColor: color,
+      backgroundColor: colors[status] ?? Colors.grey,
+      padding: EdgeInsets.zero,
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
-           '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  String _formatTimestamp(dynamic ts) {
+    if (ts == null) return '—';
+    if (ts is Timestamp) {
+      final dt = ts.toDate().toLocal();
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    if (ts is DateTime) {
+      return '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')} '
+          '${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
+    }
+    return ts.toString();
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
+    final isRecoveryTab = _filterStatus == 'Recovery';
+    final listItems = isRecoveryTab ? _recoveryRequests : _users;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('회원 승인 관리'),
+        title: const Text('Member Management'),
         backgroundColor: const Color(0xFF0038A8),
         foregroundColor: Colors.white,
         actions: [
+          // Refresh button
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () {
+              _loadUsers();
+              _loadRecoveryRequests();
+            },
+          ),
+          // Recovery badge
           if (_unreadRecoveryCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 8),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -836,8 +759,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                     tooltip: 'New recovery requests',
                     onPressed: () {
                       setState(() => _filterStatus = 'Recovery');
-                      _loadRecoveryRequests();
-                      _markRecoveryNotificationsRead();
+                      _markAllRecoveryRead();
                     },
                   ),
                   Positioned(
@@ -866,97 +788,181 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
+          preferredSize: const Size.fromHeight(56),
           child: Container(
             color: Colors.white,
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 'Pending',
-                        label: Text('대기중'),
-                        icon: Icon(Icons.hourglass_empty),
-                      ),
-                      ButtonSegment(
-                        value: 'Approved',
-                        label: Text('승인됨'),
-                        icon: Icon(Icons.check_circle),
-                      ),
-                      ButtonSegment(
-                        value: 'Rejected',
-                        label: Text('거부됨'),
-                        icon: Icon(Icons.cancel),
-                      ),
-                      ButtonSegment(
-                        value: 'Blocked',
-                        label: Text('차단됨'),
-                        icon: Icon(Icons.block),
-                      ),
-                      ButtonSegment(
-                        value: 'Recovery',
-                        label: Text('복구요청'),
-                        icon: Icon(Icons.restore),
-                      ),
-                      ButtonSegment(
-                        value: 'All',
-                        label: Text('전체'),
-                        icon: Icon(Icons.list),
-                      ),
-                    ],
-                    selected: {_filterStatus},
-                    onSelectionChanged: (Set<String> newSelection) {
-                      setState(() {
-                        _filterStatus = newSelection.first;
-                      });
-                      _loadUsers();
-                      _loadRecoveryRequests();
-                      if (newSelection.first == 'Recovery') {
-                        _markRecoveryNotificationsRead();
-                      }
-                    },
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<String>(
+                segments: [
+                  const ButtonSegment(
+                    value: 'Pending',
+                    label: Text('Pending'),
+                    icon: Icon(Icons.hourglass_empty, size: 16),
                   ),
-                ),
-              ],
+                  const ButtonSegment(
+                    value: 'Approved',
+                    label: Text('Approved'),
+                    icon: Icon(Icons.check_circle, size: 16),
+                  ),
+                  const ButtonSegment(
+                    value: 'Rejected',
+                    label: Text('Rejected'),
+                    icon: Icon(Icons.cancel, size: 16),
+                  ),
+                  const ButtonSegment(
+                    value: 'Blocked',
+                    label: Text('Blocked'),
+                    icon: Icon(Icons.block, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: 'Recovery',
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Recovery'),
+                        if (_unreadRecoveryCount > 0) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$_unreadRecoveryCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    icon: const Icon(Icons.restore, size: 16),
+                  ),
+                  const ButtonSegment(
+                    value: 'All',
+                    label: Text('All'),
+                    icon: Icon(Icons.list, size: 16),
+                  ),
+                ],
+                selected: {_filterStatus},
+                onSelectionChanged: (Set<String> sel) async {
+                  setState(() => _filterStatus = sel.first);
+                  if (sel.first == 'Recovery') {
+                    await _markAllRecoveryRead();
+                  } else {
+                    await _loadUsers();
+                  }
+                },
+              ),
             ),
           ),
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _filterStatus == 'Recovery'
-              ? _recoveryRequests.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
-                          const SizedBox(height: 16),
-                          Text(
-                            '계정 복구 요청이 없습니다',
-                            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                          ),
-                        ],
+          : listItems.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
+                      const SizedBox(height: 16),
+                      Text(
+                        isRecoveryTab
+                            ? 'No recovery requests'
+                            : 'No users in this status',
+                        style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: _recoveryRequests.length,
-                      itemBuilder: (context, index) {
-                        final request = _recoveryRequests[index];
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _loadUsers();
+                          _loadRecoveryRequests();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await _loadUsers();
+                    await _loadRecoveryRequests();
+                  },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: listItems.length,
+                    itemBuilder: (context, index) {
+                      final item = listItems[index];
+                      if (isRecoveryTab) {
+                        // Recovery request tile
+                        final isUnread = item['read_by_admin'] == false;
                         return Card(
                           elevation: 2,
-                          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                          color: isUnread ? Colors.orange.shade50 : null,
                           child: ListTile(
                             contentPadding: const EdgeInsets.all(12),
-                            leading: const CircleAvatar(
-                              backgroundColor: Colors.orange,
-                              child: Icon(Icons.restore, color: Colors.white),
+                            leading: CircleAvatar(
+                              backgroundColor: isUnread ? Colors.orange : Colors.grey,
+                              child: const Icon(Icons.restore, color: Colors.white),
                             ),
                             title: Text(
-                              request['name'],
+                              item['email'] ?? '—',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text('Requested: ${_formatTimestamp(item['requested_at'])}'),
+                                Text('Status: ${item['status'] ?? '—'}'),
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isUnread)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 4),
+                                    child: Icon(Icons.circle, color: Colors.orange, size: 10),
+                                  ),
+                                const Icon(Icons.arrow_forward_ios, size: 16),
+                              ],
+                            ),
+                            onTap: () => _showRecoveryDetails(item),
+                          ),
+                        );
+                      } else {
+                        // User tile
+                        final name = item['name'] as String? ?? '?';
+                        final email = item['email'] as String? ?? '';
+                        final nationality = item['nationality'] as String? ?? '';
+                        final status = item['status'] as String? ?? '';
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(12),
+                            leading: CircleAvatar(
+                              backgroundColor: const Color(0xFF0038A8),
+                              child: Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -966,73 +972,19 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 4),
-                                Text('이메일: ${request['email']}'),
-                                Text('요청일: ${_formatDate(request['request_time'])}'),
+                                Text('Email: $email'),
+                                if (nationality.isNotEmpty)
+                                  Text('Nationality: $nationality'),
+                                Text('Applied: ${_formatTimestamp(item['created_at'])}'),
                               ],
                             ),
-                            trailing: const Icon(Icons.arrow_forward_ios),
-                            onTap: () => _showRecoveryRequestDetails(request),
+                            trailing: _buildStatusChip(status),
+                            onTap: () => _showUserDetails(item),
                           ),
                         );
-                      },
-                    )
-              : _users.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
-                      const SizedBox(height: 16),
-                      Text(
-                        '해당 상태의 사용자가 없습니다',
-                        style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                      ),
-                    ],
+                      }
+                    },
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: _users.length,
-                  itemBuilder: (context, index) {
-                    final user = _users[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(12),
-                        leading: CircleAvatar(
-                          backgroundColor: const Color(0xFF0038A8),
-                          child: Text(
-                            user['name'].toString().isNotEmpty 
-                                ? user['name'].toString()[0].toUpperCase() 
-                                : '?',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          user['name'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text('ID: ${user['user_id']}'),
-                            Text('국적: ${user['nationality']}'),
-                            Text('신청일: ${_formatDate(user['created_at'])}'),
-                          ],
-                        ),
-                        trailing: _buildStatusChip(user['status']),
-                        onTap: () => _showUserDetails(user),
-                      ),
-                    );
-                  },
                 ),
     );
   }
