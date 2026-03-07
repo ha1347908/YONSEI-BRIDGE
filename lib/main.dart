@@ -91,6 +91,10 @@ class _SplashScreenState extends State<SplashScreen> {
     
     if (mounted) {
       if (isLoggedIn) {
+        // Restore per-user saved-posts scope on auto-login
+        final savedUserId = prefs.getString('userId');
+        Provider.of<StorageService>(context, listen: false)
+            .setCurrentUser(savedUserId);
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 
@@ -29,18 +30,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _showAccountRecoveryDialog() async {
     final emailController = TextEditingController();
-    
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('계정 복구 신청'),
+        title: const Text('Account Recovery'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '등록된 이메일 주소를 입력하시면, 관리자가 확인 후 복구 승인을 진행합니다.',
+                'Enter the email address you used when signing up. '
+                'An administrator will review your request and proceed with manual account recovery.',
                 style: TextStyle(fontSize: 14, height: 1.5),
               ),
               const SizedBox(height: 16),
@@ -48,7 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
-                  labelText: '등록된 이메일 주소',
+                  labelText: 'Registered Email Address',
                   hintText: 'example@gmail.com',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.email),
@@ -68,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '⏰ 복구 승인까지 1~2일 소요됩니다',
+                        '⏰ Recovery approval may take 1–2 business days',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -85,17 +87,17 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
               if (emailController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('이메일을 입력해주세요')),
+                  const SnackBar(content: Text('Please enter your email address')),
                 );
                 return;
               }
-              
+
               Navigator.pop(context);
               await _submitRecoveryRequest(emailController.text.trim());
             },
@@ -103,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
               backgroundColor: const Color(0xFF0038A8),
               foregroundColor: Colors.white,
             ),
-            child: const Text('복구 신청'),
+            child: const Text('Submit Request'),
           ),
         ],
       ),
@@ -113,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submitRecoveryRequest(String email) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Check if user exists
       final storedUser = prefs.getString('demo_user_$email');
       if (storedUser == null) {
@@ -121,12 +123,13 @@ class _LoginScreenState extends State<LoginScreen> {
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('계정을 찾을 수 없음'),
-              content: const Text('입력하신 이메일로 등록된 계정이 없습니다.'),
+              title: const Text('Account Not Found'),
+              content: const Text(
+                  'No account registered with that email address.'),
               actions: [
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('확인'),
+                  child: const Text('OK'),
                 ),
               ],
             ),
@@ -134,23 +137,32 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         return;
       }
-      
+
       // Save recovery request
-      final recoveryKey = 'recovery_request_$email';
-      await prefs.setString(recoveryKey, DateTime.now().toIso8601String());
+      final requestTime = DateTime.now().toIso8601String();
+      await prefs.setString('recovery_request_$email', requestTime);
       await prefs.setString('recovery_status_$email', 'Pending');
-      
+
+      // ── Admin notification: push into admin_recovery_notifications list ──
+      final notifKey = 'admin_recovery_notifications';
+      final existing = prefs.getStringList(notifKey) ?? [];
+      existing.insert(0,
+          '{"email":"$email","requestTime":"$requestTime","read":false}');
+      // Keep at most 50 notifications
+      if (existing.length > 50) existing.removeLast();
+      await prefs.setStringList(notifKey, existing);
+
       if (mounted) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('복구 신청 완료'),
+            title: const Text('Recovery Request Submitted'),
             content: const Text(
-              '계정 복구 신청이 접수되었습니다.\n\n'
-              '관리자가 등록된 이메일로 확인 메일을 발송한 후,\n'
-              '수동으로 복구 승인을 진행합니다.\n\n'
-              '⏰ 처리 시간: 1~2일 소요\n\n'
-              '승인이 완료되면 등록된 이메일로 임시 비밀번호가 발송됩니다.',
+              'Your account recovery request has been submitted.\n\n'
+              'An administrator will send a confirmation email to the registered '
+              'address and manually process your recovery request.\n\n'
+              '⏰ Processing time: 1–2 business days\n\n'
+              'Once approved, a temporary password will be sent to your registered email.',
             ),
             actions: [
               ElevatedButton(
@@ -159,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   backgroundColor: const Color(0xFF0038A8),
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('확인'),
+                child: const Text('OK'),
               ),
             ],
           ),
@@ -169,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('복구 신청 실패: $e'),
+            content: Text('Recovery request failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -194,7 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
             'name': 'System Administrator',
             'status': 'Approved',
             'role': 'Admin',
-            'permissions': 'full_admin', // 전체 관리자 권한
+            'permissions': 'full_admin',
             'can_delete_account': true,
           },
           'bridge_master_haram': {
@@ -203,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
             'status': 'Approved',
             'role': 'Admin',
             'permissions': 'full_admin',
-            'can_delete_account': false, // 탈퇴 불가
+            'can_delete_account': false,
           },
           'bridge_master_jose': {
             'password': 'jose2001!',
@@ -211,19 +223,19 @@ class _LoginScreenState extends State<LoginScreen> {
             'status': 'Approved',
             'role': 'Admin',
             'permissions': 'full_admin',
-            'can_delete_account': false, // 탈퇴 불가
+            'can_delete_account': false,
           },
           'manage_yb2026': {
             'password': '2026manage_yb',
             'name': 'YB Manager 2026',
             'status': 'Approved',
             'role': 'Admin',
-            'permissions': 'post_only', // 게시글 작성만 가능
-            'can_delete_account': false, // 탈퇴 불가
+            'permissions': 'post_only',
+            'can_delete_account': false,
           },
           'testuser': {
             'password': 'test123',
-            'name': '테스트 사용자',
+            'name': 'Test User',
             'status': 'Approved',
             'role': 'User',
             'permissions': 'user',
@@ -231,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
           },
           'pending_user': {
             'password': 'pending123',
-            'name': '대기 중 사용자',
+            'name': 'Pending User',
             'status': 'Pending',
             'role': 'User',
             'permissions': 'user',
@@ -247,22 +259,22 @@ class _LoginScreenState extends State<LoginScreen> {
           final storedPassword = prefs.getString('demo_password_$username');
           final storedStatus = prefs.getString('demo_status_$username');
           final storedName = prefs.getString('demo_name_$username');
-          final storedNickname = prefs.getString('demo_nickname_$username'); // 별명 가져오기
-          
+          final storedNickname = prefs.getString('demo_nickname_$username');
+
           if (storedUser == null) {
             throw Exception('User not found. Please sign up first.');
           }
-          
+
           if (storedPassword != password) {
             throw Exception('Incorrect password');
           }
-          
+
           // Check status for custom users
           if (storedStatus == 'Pending') {
             setState(() {
               _isLoading = false;
             });
-            
+
             if (mounted) {
               showDialog(
                 context: context,
@@ -270,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   title: const Text('Approval Pending'),
                   content: const Text(
                     'Your account is awaiting administrator approval.\n\n'
-                    'Please wait 1-2 days for approval.\n\n'
+                    'Please wait 1–2 business days for approval.\n\n'
                     'You will be notified once your account is approved.',
                   ),
                   actions: [
@@ -284,13 +296,13 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             return;
           }
-          
+
           if (storedStatus == 'Blocked') {
             final blockReason = prefs.getString('demo_block_reason_$username');
             setState(() {
               _isLoading = false;
             });
-            
+
             if (mounted) {
               showDialog(
                 context: context,
@@ -316,13 +328,14 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             return;
           }
-          
+
           if (storedStatus == 'Rejected') {
-            final rejectionReason = prefs.getString('demo_rejection_reason_$username');
+            final rejectionReason =
+                prefs.getString('demo_rejection_reason_$username');
             setState(() {
               _isLoading = false;
             });
-            
+
             if (mounted) {
               showDialog(
                 context: context,
@@ -348,37 +361,41 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             return;
           }
-          
+
           // Check if status is 'Approved' before allowing login
           if (storedStatus != 'Approved') {
-            throw Exception('Account status: $storedStatus. Only approved accounts can login.');
+            throw Exception(
+                'Account status: $storedStatus. Only approved accounts can login.');
           }
-          
+
           // Custom user approved, login with nickname
-          final authService = Provider.of<AuthService>(context, listen: false);
+          final authService =
+              Provider.of<AuthService>(context, listen: false);
+          final storageServiceCustom =
+              Provider.of<StorageService>(context, listen: false);
           await authService.login(
-            username, 
-            storedNickname ?? storedName ?? username, 
+            username,
+            storedNickname ?? storedName ?? username,
             _rememberMe,
             permission: 'user',
             canDelete: true,
           );
-          
+          storageServiceCustom.setCurrentUser(username);
         } else {
           // Demo account
           final account = demoAccounts[username]!;
-          
+
           // Verify password
           if (account['password'] != password) {
             throw Exception('Incorrect password');
           }
-          
+
           // Check status
           if (account['status'] == 'Pending') {
             setState(() {
               _isLoading = false;
             });
-            
+
             if (mounted) {
               showDialog(
                 context: context,
@@ -386,7 +403,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   title: const Text('Approval Pending'),
                   content: const Text(
                     'Your account is awaiting administrator approval.\n\n'
-                    'Please wait 1-2 days for approval.\n\n'
+                    'Please wait 1–2 business days for approval.\n\n'
                     'You will be notified once your account is approved.',
                   ),
                   actions: [
@@ -400,9 +417,12 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             return;
           }
-          
+
           // User is approved, proceed with login
-          final authService = Provider.of<AuthService>(context, listen: false);
+          final authService =
+              Provider.of<AuthService>(context, listen: false);
+          final storageServiceDemo =
+              Provider.of<StorageService>(context, listen: false);
           await authService.login(
             username,
             account['name'] as String,
@@ -410,6 +430,7 @@ class _LoginScreenState extends State<LoginScreen> {
             permission: account['permissions'] as String?,
             canDelete: account['can_delete_account'] as bool?,
           );
+          storageServiceDemo.setCurrentUser(username);
         }
 
         setState(() {
@@ -503,7 +524,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
                         child: Image.asset(
                           'assets/images/slogan.png',
                           width: 250,
@@ -532,16 +554,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               const SizedBox(height: 24),
+                              // ── Email field with subtitle ──
                               TextFormField(
                                 controller: _usernameController,
+                                keyboardType: TextInputType.emailAddress,
                                 decoration: const InputDecoration(
-                                  labelText: 'Username',
-                                  prefixIcon: Icon(Icons.person),
+                                  labelText: 'Email Address',
+                                  hintText: 'Enter the email you used at sign-up',
+                                  helperText:
+                                      'Use the email address you registered with',
+                                  prefixIcon: Icon(Icons.email_outlined),
                                   border: OutlineInputBorder(),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your username';
+                                    return 'Please enter your email address';
                                   }
                                   return null;
                                 },
@@ -592,12 +619,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _handleLogin,
+                                  onPressed:
+                                      _isLoading ? null : _handleLogin,
                                   style: ElevatedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 16,
                                     ),
-                                    backgroundColor: const Color(0xFF0038A8),
+                                    backgroundColor:
+                                        const Color(0xFF0038A8),
                                     foregroundColor: Colors.white,
                                   ),
                                   child: _isLoading
@@ -623,7 +652,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => const SignupScreen(),
+                                        builder: (_) =>
+                                            const SignupScreen(),
                                       ),
                                     );
                                   },
@@ -644,10 +674,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   _showAccountRecoveryDialog();
                                 },
                                 child: const Text(
-                                  '아이디/비밀번호 찾기',
+                                  'Forgot ID / Password',
                                   style: TextStyle(
                                     fontSize: 14,
-                                    decoration: TextDecoration.underline,
+                                    decoration:
+                                        TextDecoration.underline,
                                   ),
                                 ),
                               ),

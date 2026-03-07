@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import '../services/storage_service.dart';
@@ -18,6 +20,26 @@ class MyPageScreen extends StatefulWidget {
 }
 
 class _MyPageScreenState extends State<MyPageScreen> {
+  int _unreadRecoveryCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadRecoveryCount();
+  }
+
+  Future<void> _loadUnreadRecoveryCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifs = prefs.getStringList('admin_recovery_notifications') ?? [];
+    int unread = 0;
+    for (final n in notifs) {
+      try {
+        final map = jsonDecode(n) as Map<String, dynamic>;
+        if (map['read'] == false) unread++;
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _unreadRecoveryCount = unread);
+  }
 
   Future<void> _handleLogout(BuildContext context) async {
     final lang = Provider.of<LanguageService>(context, listen: false);
@@ -41,6 +63,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
     if (confirm == true && context.mounted) {
       final authService = Provider.of<AuthService>(context, listen: false);
+      Provider.of<StorageService>(context, listen: false).setCurrentUser(null);
       await authService.logout();
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -73,6 +96,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
     if (confirm == true && context.mounted) {
       final authService = Provider.of<AuthService>(context, listen: false);
+      Provider.of<StorageService>(context, listen: false).setCurrentUser(null);
       await authService.logout();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -226,11 +250,35 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF0038A8)),
                 title: const Text('회원 승인 관리'),
                 subtitle: const Text('가입 신청 승인/거부/차단'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_unreadRecoveryCount > 0)
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$_unreadRecoveryCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+                  ).then((_) => _loadUnreadRecoveryCount());
+                },
               ),
               ListTile(
                 leading: const Icon(Icons.analytics, color: Color(0xFF0038A8)),

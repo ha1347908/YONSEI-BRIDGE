@@ -14,12 +14,43 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _recoveryRequests = [];
   bool _isLoading = true;
+  int _unreadRecoveryCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
     _loadRecoveryRequests();
+    _loadUnreadRecoveryCount();
+  }
+
+  Future<void> _loadUnreadRecoveryCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifs = prefs.getStringList('admin_recovery_notifications') ?? [];
+    int unread = 0;
+    for (final n in notifs) {
+      try {
+        final map = jsonDecode(n) as Map<String, dynamic>;
+        if (map['read'] == false) unread++;
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _unreadRecoveryCount = unread);
+  }
+
+  Future<void> _markRecoveryNotificationsRead() async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifs = prefs.getStringList('admin_recovery_notifications') ?? [];
+    final updated = notifs.map((n) {
+      try {
+        final map = jsonDecode(n) as Map<String, dynamic>;
+        map['read'] = true;
+        return jsonEncode(map);
+      } catch (_) {
+        return n;
+      }
+    }).toList();
+    await prefs.setStringList('admin_recovery_notifications', updated);
+    if (mounted) setState(() => _unreadRecoveryCount = 0);
   }
 
   Future<void> _loadRecoveryRequests() async {
@@ -712,6 +743,47 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         title: const Text('회원 승인 관리'),
         backgroundColor: const Color(0xFF0038A8),
         foregroundColor: Colors.white,
+        actions: [
+          if (_unreadRecoveryCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.restore, color: Colors.white),
+                    tooltip: 'New recovery requests',
+                    onPressed: () {
+                      setState(() => _filterStatus = 'Recovery');
+                      _loadRecoveryRequests();
+                      _markRecoveryNotificationsRead();
+                    },
+                  ),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        '$_unreadRecoveryCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
           child: Container(
@@ -760,6 +832,9 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                       });
                       _loadUsers();
                       _loadRecoveryRequests();
+                      if (newSelection.first == 'Recovery') {
+                        _markRecoveryNotificationsRead();
+                      }
                     },
                   ),
                 ),

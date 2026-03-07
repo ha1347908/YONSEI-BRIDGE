@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
+import '../services/storage_service.dart';
 import 'login_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'privacy_policy_screen.dart';
@@ -72,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirm == true && mounted) {
       final authService = Provider.of<AuthService>(context, listen: false);
+      Provider.of<StorageService>(context, listen: false).setCurrentUser(null);
       await authService.logout();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -104,6 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirm == true && mounted) {
       final authService = Provider.of<AuthService>(context, listen: false);
+      Provider.of<StorageService>(context, listen: false).setCurrentUser(null);
       await authService.logout();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

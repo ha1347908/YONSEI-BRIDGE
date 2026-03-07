@@ -17,21 +17,18 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
+  final _usernameController = TextEditingController(); // stores email
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
-  final _nicknameController = TextEditingController(); // 별명 필드 추가
-  String? _selectedNationality; // Country dropdown selection
+  final _nicknameController = TextEditingController();
+  String? _selectedNationality;
   final _contactController = TextEditingController();
   XFile? _studentIdImage;
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  
-  // 캠퍼스 및 학과 선택
-  String? _selectedCampus;
-  String? _selectedDepartment;
+
   final _departmentSearchController = TextEditingController();
 
   @override
@@ -40,30 +37,30 @@ class _SignupScreenState extends State<SignupScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _nameController.dispose();
-    _nicknameController.dispose(); // 별명 컨트롤러 dispose
+    _nicknameController.dispose();
     _contactController.dispose();
     _departmentSearchController.dispose();
     super.dispose();
+    // _selectedCampus and _selectedDepartment reserved for future use
   }
 
   Future<void> _takePicture() async {
     final ImagePicker picker = ImagePicker();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('연세대 학생 인증'),
+        title: const Text('Yonsei Student Verification'),
         content: const Text(
-          '학생증이나 재학증명서를 사진촬영하여 주세요.\n\n'
-          '사진이 흐리거나 위조가 의심될 시, 가입이 거절당할 수 있습니다.\n\n'
-          '⚠️ 중요: 사진은 관리자 승인/거부 즉시 영구 삭제되며, 어떠한 백업도 보관하지 않습니다.',
+          'Please take a photo of your student ID or enrollment certificate.\n\n'
+          'Blurry or suspected forged photos may result in registration rejection.\n\n'
+          '⚠️ Important: The photo will be permanently deleted immediately after '
+          'administrator approval or rejection — no backup is retained.',
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('취소'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -75,7 +72,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   maxHeight: 1080,
                   imageQuality: 85,
                 );
-                
                 if (image != null) {
                   setState(() {
                     _studentIdImage = image;
@@ -84,12 +80,12 @@ class _SignupScreenState extends State<SignupScreen> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('사진 촬영 실패: $e')),
+                    SnackBar(content: Text('Camera error: $e')),
                   );
                 }
               }
             },
-            child: const Text('확인'),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -105,7 +101,6 @@ class _SignupScreenState extends State<SignupScreen> {
         maxHeight: 1080,
         imageQuality: 85,
       );
-      
       if (image != null) {
         setState(() {
           _studentIdImage = image;
@@ -114,16 +109,17 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('사진 선택 실패: $e')),
+          SnackBar(content: Text('Gallery error: $e')),
         );
       }
     }
   }
 
   Future<void> _showPrivacyConsent() async {
-    final languageService = Provider.of<LanguageService>(context, listen: false);
+    final languageService =
+        Provider.of<LanguageService>(context, listen: false);
     final currentLang = languageService.currentLanguage;
-    
+
     String consentText;
     switch (currentLang) {
       case 'en':
@@ -182,14 +178,18 @@ For full details, please review our Privacy Policy in Settings.''';
 
 자세한 내용은 설정에서 개인정보처리방침을 확인하세요.''';
     }
-    
+
     final agreed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text(currentLang == 'ko' ? '개인정보처리방침' : 
-                     currentLang == 'en' ? 'Privacy Policy' :
-                     currentLang == 'zh' ? '隐私政策' : 'プライバシーポリシー'),
+        title: Text(currentLang == 'ko'
+            ? '개인정보처리방침'
+            : currentLang == 'en'
+                ? 'Privacy Policy'
+                : currentLang == 'zh'
+                    ? '隐私政策'
+                    : 'プライバシーポリシー'),
         content: SingleChildScrollView(
           child: Text(
             consentText,
@@ -199,9 +199,13 @@ For full details, please review our Privacy Policy in Settings.''';
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(currentLang == 'ko' ? '취소' : 
-                       currentLang == 'en' ? 'Cancel' :
-                       currentLang == 'zh' ? '取消' : 'キャンセル'),
+            child: Text(currentLang == 'ko'
+                ? '취소'
+                : currentLang == 'en'
+                    ? 'Cancel'
+                    : currentLang == 'zh'
+                        ? '取消'
+                        : 'キャンセル'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -209,23 +213,26 @@ For full details, please review our Privacy Policy in Settings.''';
               backgroundColor: const Color(0xFF0038A8),
               foregroundColor: Colors.white,
             ),
-            child: Text(currentLang == 'ko' ? '동의합니다' : 
-                       currentLang == 'en' ? 'I Agree' :
-                       currentLang == 'zh' ? '我同意' : '同意する'),
+            child: Text(currentLang == 'ko'
+                ? '동의합니다'
+                : currentLang == 'en'
+                    ? 'I Agree'
+                    : currentLang == 'zh'
+                        ? '我同意'
+                        : '同意する'),
           ),
         ],
       ),
     );
-    
+
     if (agreed == true) {
       await _submitSignup();
     }
   }
 
   Future<void> _submitSignup() async {
-    // Validate form and check if nationality and student ID are provided
-    if (_formKey.currentState!.validate() && 
-        _selectedNationality != null && 
+    if (_formKey.currentState!.validate() &&
+        _selectedNationality != null &&
         _studentIdImage != null) {
       setState(() {
         _isLoading = true;
@@ -233,24 +240,23 @@ For full details, please review our Privacy Policy in Settings.''';
 
       try {
         final String userId = _usernameController.text.trim();
-        
-        // For demo purposes without Firebase setup, store locally
-        // In production, use actual Firebase Storage and Firestore
-        
-        // Simulate user registration
+
         await Future.delayed(const Duration(seconds: 1));
-        
-        // Store user info locally for demo
+
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('demo_user_$userId', userId);
-        await prefs.setString('demo_name_$userId', _nameController.text.trim());
-        await prefs.setString('demo_nickname_$userId', _nicknameController.text.trim()); // 별명 저장
-        await prefs.setString('demo_nationality_$userId', _selectedNationality ?? 'Unknown');
-        await prefs.setString('demo_contact_$userId', _contactController.text.trim());
-        await prefs.setString('demo_password_$userId', _passwordController.text);
+        await prefs.setString(
+            'demo_name_$userId', _nameController.text.trim());
+        await prefs.setString(
+            'demo_nickname_$userId', _nicknameController.text.trim());
+        await prefs.setString('demo_nationality_$userId',
+            _selectedNationality ?? 'Unknown');
+        await prefs.setString(
+            'demo_contact_$userId', _contactController.text.trim());
+        await prefs.setString(
+            'demo_password_$userId', _passwordController.text);
         await prefs.setString('demo_status_$userId', 'Pending');
-        
-        // Store student ID photo as base64 string for demo
+
         if (_studentIdImage != null) {
           final bytes = await _studentIdImage!.readAsBytes();
           final base64Image = base64Encode(bytes);
@@ -266,11 +272,11 @@ For full details, please review our Privacy Policy in Settings.''';
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
-              title: const Text('회원가입 신청 완료'),
+              title: const Text('Sign-Up Application Submitted'),
               content: const Text(
-                '관리자의 승인이 완료되면 로그인하실 수 있습니다.\n\n'
-                '승인까지 1~2일 정도 소요될 수 있습니다.\n\n'
-                '⚠️ 학생증 사진은 승인/거부 즉시 자동으로 삭제됩니다.',
+                'You can log in once an administrator approves your account.\n\n'
+                'Approval may take 1–2 business days.\n\n'
+                '⚠️ Your student ID photo will be automatically deleted upon approval or rejection.',
               ),
               actions: [
                 ElevatedButton(
@@ -282,7 +288,7 @@ For full details, please review our Privacy Policy in Settings.''';
                     backgroundColor: const Color(0xFF0038A8),
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('확인'),
+                  child: const Text('OK'),
                 ),
               ],
             ),
@@ -292,11 +298,11 @@ For full details, please review our Privacy Policy in Settings.''';
         setState(() {
           _isLoading = false;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('회원가입 실패: $e'),
+              content: Text('Sign-up failed: $e'),
               backgroundColor: Colors.red,
             ),
           );
@@ -304,7 +310,9 @@ For full details, please review our Privacy Policy in Settings.''';
       }
     } else if (_studentIdImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('학생증 인증을 완료해주세요')),
+        const SnackBar(
+            content:
+                Text('Please complete student ID verification')),
       );
     }
   }
@@ -313,7 +321,7 @@ For full details, please review our Privacy Policy in Settings.''';
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('회원가입'),
+        title: const Text('Sign Up'),
         backgroundColor: const Color(0xFF0038A8),
         foregroundColor: Colors.white,
       ),
@@ -336,15 +344,12 @@ For full details, please review our Privacy Policy in Settings.''';
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '연세대학교 미래캠퍼스 유학생 플랫폼',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
+                  'International Student Platform — Yonsei University Mirae Campus',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-                
+
                 // Step 1: Student ID Verification
                 Card(
                   elevation: 2,
@@ -355,10 +360,11 @@ For full details, please review our Privacy Policy in Settings.''';
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.verified_user, color: Color(0xFF0038A8)),
+                            Icon(Icons.verified_user,
+                                color: Color(0xFF0038A8)),
                             SizedBox(width: 8),
                             Text(
-                              '1단계: 연세대 학생 인증',
+                              'Step 1: Yonsei Student Verification',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -373,9 +379,10 @@ For full details, please review our Privacy Policy in Settings.''';
                               ElevatedButton.icon(
                                 onPressed: _takePicture,
                                 icon: const Icon(Icons.camera_alt),
-                                label: const Text('학생증 촬영하기'),
+                                label: const Text('Take Photo of Student ID'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0038A8),
+                                  backgroundColor:
+                                      const Color(0xFF0038A8),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 16,
@@ -386,8 +393,10 @@ For full details, please review our Privacy Policy in Settings.''';
                               const SizedBox(height: 8),
                               OutlinedButton.icon(
                                 onPressed: _pickFromGallery,
-                                icon: const Icon(Icons.photo_library),
-                                label: const Text('갤러리에서 선택'),
+                                icon:
+                                    const Icon(Icons.photo_library),
+                                label:
+                                    const Text('Choose from Gallery'),
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 16,
@@ -403,21 +412,28 @@ For full details, please review our Privacy Policy in Settings.''';
                               Container(
                                 height: 200,
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey),
-                                  borderRadius: BorderRadius.circular(8),
+                                  border:
+                                      Border.all(color: Colors.grey),
+                                  borderRadius:
+                                      BorderRadius.circular(8),
                                 ),
                                 child: kIsWeb
-                                    ? Image.network(_studentIdImage!.path)
-                                    : Image.file(File(_studentIdImage!.path)),
+                                    ? Image.network(
+                                        _studentIdImage!.path)
+                                    : Image.file(
+                                        File(_studentIdImage!.path)),
                               ),
                               const SizedBox(height: 8),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
                                 children: [
                                   OutlinedButton.icon(
                                     onPressed: _takePicture,
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('다시 촬영하기'),
+                                    icon:
+                                        const Icon(Icons.refresh),
+                                    label:
+                                        const Text('Retake Photo'),
                                   ),
                                   const Icon(
                                     Icons.check_circle,
@@ -432,9 +448,9 @@ For full details, please review our Privacy Policy in Settings.''';
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Step 2: Account Information
                 Card(
                   elevation: 2,
@@ -445,10 +461,11 @@ For full details, please review our Privacy Policy in Settings.''';
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.person_add, color: Color(0xFF0038A8)),
+                            Icon(Icons.person_add,
+                                color: Color(0xFF0038A8)),
                             SizedBox(width: 8),
                             Text(
-                              '2단계: 계정 정보 입력',
+                              'Step 2: Account Information',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -457,102 +474,119 @@ For full details, please review our Privacy Policy in Settings.''';
                           ],
                         ),
                         const SizedBox(height: 16),
+                        // Full Name
                         TextFormField(
                           controller: _nameController,
                           decoration: const InputDecoration(
-                            labelText: '이름 (실명)',
+                            labelText: 'Full Name (Real Name)',
                             prefixIcon: Icon(Icons.badge),
                             border: OutlineInputBorder(),
-                            hintText: '예: 홍길동, John Smith',
+                            hintText: 'e.g. 홍길동, John Smith',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '이름을 입력해주세요';
+                              return 'Please enter your full name';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
+                        // Nickname
                         TextFormField(
                           controller: _nicknameController,
                           decoration: const InputDecoration(
-                            labelText: '별명 (닉네임)',
-                            prefixIcon: Icon(Icons.person_outline),
+                            labelText: 'Nickname (Display Name)',
+                            prefixIcon:
+                                Icon(Icons.person_outline),
                             border: OutlineInputBorder(),
-                            hintText: '앱에서 사용할 닉네임',
+                            hintText:
+                                'Nickname shown inside the app',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '별명을 입력해주세요';
+                              return 'Please enter a nickname';
                             }
                             if (value.length < 2) {
-                              return '별명은 2자 이상이어야 합니다';
+                              return 'Nickname must be at least 2 characters';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
-                        // Country selection dropdown
+                        // Nationality
                         CountrySearchDropdown(
                           initialValue: _selectedNationality,
-                          hintText: '국가 / 국적 (Nationality / Country of Origin)',
+                          hintText:
+                              'Nationality / Country of Origin',
                           onCountrySelected: (country) {
-                            setState(() => _selectedNationality = country);
+                            setState(
+                                () => _selectedNationality = country);
                           },
                         ),
                         if (_selectedNationality == null)
                           Padding(
-                            padding: const EdgeInsets.only(left: 12, top: 4),
+                            padding: const EdgeInsets.only(
+                                left: 12, top: 4),
                             child: Text(
-                              '국적을 선택해주세요',
-                              style: TextStyle(color: Colors.red[700], fontSize: 12),
+                              'Please select your nationality',
+                              style: TextStyle(
+                                  color: Colors.red[700],
+                                  fontSize: 12),
                             ),
                           ),
                         const SizedBox(height: 16),
+                        // Contact
                         TextFormField(
                           controller: _contactController,
                           decoration: const InputDecoration(
-                            labelText: '연락처',
+                            labelText: 'Contact (Phone / Email)',
                             prefixIcon: Icon(Icons.phone),
                             border: OutlineInputBorder(),
-                            hintText: '010-1234-5678 또는 이메일',
+                            hintText:
+                                '010-1234-5678 or email address',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '연락처를 입력해주세요';
+                              return 'Please enter your contact information';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
+                        // Email (used as login ID)
                         TextFormField(
                           controller: _usernameController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: const InputDecoration(
-                            labelText: '이메일 주소',
-                            prefixIcon: Icon(Icons.email),
+                            labelText: 'Email Address (Login ID)',
+                            prefixIcon:
+                                Icon(Icons.email_outlined),
                             border: OutlineInputBorder(),
                             hintText: 'example@gmail.com',
+                            helperText:
+                                'This email address will be used as your login ID',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '이메일을 입력해주세요';
+                              return 'Please enter your email address';
                             }
-                            // Email validation
-                            final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                            final emailRegex = RegExp(
+                                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
                             if (!emailRegex.hasMatch(value)) {
-                              return '올바른 이메일 형식이 아닙니다';
+                              return 'Please enter a valid email address';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
+                        // Password
                         TextFormField(
                           controller: _passwordController,
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
-                            labelText: '비밀번호',
-                            prefixIcon: const Icon(Icons.lock),
+                            labelText: 'Password',
+                            prefixIcon:
+                                const Icon(Icons.lock),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -561,30 +595,33 @@ For full details, please review our Privacy Policy in Settings.''';
                               ),
                               onPressed: () {
                                 setState(() {
-                                  _obscurePassword = !_obscurePassword;
+                                  _obscurePassword =
+                                      !_obscurePassword;
                                 });
                               },
                             ),
                             border: const OutlineInputBorder(),
-                            hintText: '8자 이상',
+                            hintText: 'At least 8 characters',
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '비밀번호를 입력해주세요';
+                              return 'Please enter a password';
                             }
                             if (value.length < 8) {
-                              return '비밀번호는 8자 이상이어야 합니다';
+                              return 'Password must be at least 8 characters';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
+                        // Confirm Password
                         TextFormField(
                           controller: _confirmPasswordController,
                           obscureText: _obscureConfirmPassword,
                           decoration: InputDecoration(
-                            labelText: '비밀번호 확인',
-                            prefixIcon: const Icon(Icons.lock_outline),
+                            labelText: 'Confirm Password',
+                            prefixIcon:
+                                const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscureConfirmPassword
@@ -593,7 +630,8 @@ For full details, please review our Privacy Policy in Settings.''';
                               ),
                               onPressed: () {
                                 setState(() {
-                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
                                 });
                               },
                             ),
@@ -601,10 +639,10 @@ For full details, please review our Privacy Policy in Settings.''';
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return '비밀번호 확인을 입력해주세요';
+                              return 'Please confirm your password';
                             }
                             if (value != _passwordController.text) {
-                              return '비밀번호가 일치하지 않습니다';
+                              return 'Passwords do not match';
                             }
                             return null;
                           },
@@ -613,22 +651,28 @@ For full details, please review our Privacy Policy in Settings.''';
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Submit button
                 SizedBox(
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : () {
-                      if (_formKey.currentState!.validate() && _studentIdImage != null) {
-                        _showPrivacyConsent();
-                      } else if (_studentIdImage == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('학생증 인증을 완료해주세요')),
-                        );
-                      }
-                    },
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            if (_formKey.currentState!.validate() &&
+                                _studentIdImage != null) {
+                              _showPrivacyConsent();
+                            } else if (_studentIdImage == null) {
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Please complete student ID verification')),
+                              );
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0038A8),
                       foregroundColor: Colors.white,
@@ -637,9 +681,10 @@ For full details, please review our Privacy Policy in Settings.''';
                       ),
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const CircularProgressIndicator(
+                            color: Colors.white)
                         : const Text(
-                            '가입 신청하기',
+                            'Submit Application',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
