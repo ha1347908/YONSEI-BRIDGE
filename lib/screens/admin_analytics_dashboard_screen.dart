@@ -3,9 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:csv/csv.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
 import 'dart:convert';
 import '../services/language_service.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -360,103 +357,10 @@ class _AdminAnalyticsDashboardScreenState extends State<AdminAnalyticsDashboardS
   }
 
   Future<void> _exportToCSV() async {
-    try {
-      final List<List<dynamic>> rows = [];
-      
-      // Header
-      rows.add(['데이터 분석 리포트', '생성일: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}']);
-      rows.add([]);
-      
-      // 1. Retention Data
-      rows.add(['1. 리텐션 분석']);
-      rows.add(['코호트', 'Day 1 (%)', 'Day 7 (%)', 'Day 30 (%)']);
-      _retentionData.forEach((cohort, data) {
-        rows.add([
-          cohort,
-          data['day1']?.toStringAsFixed(1),
-          data['day7']?.toStringAsFixed(1),
-          data['day30']?.toStringAsFixed(1),
-        ]);
-      });
-      rows.add([]);
-      
-      // 2. MAU by Visa
-      rows.add(['2. 비자별 활성 유저 (MAU)']);
-      rows.add(['비자 타입', '활성 유저 수']);
-      _mauByVisa.forEach((visa, count) {
-        rows.add([visa, count]);
-      });
-      rows.add([]);
-      
-      // 3. Living Setup Clicks
-      rows.add(['3. 리빙셋업 클릭 로그 (TOP 10)']);
-      rows.add(['카테고리', '클릭 수']);
-      _livingSetupClicks.forEach((category, clicks) {
-        rows.add([category, clicks]);
-      });
-      rows.add([]);
-      
-      // 4. NeedJob Conversion
-      rows.add(['4. 니드잡 지원 전환율']);
-      rows.add(['카테고리', '조회수', '지원수', '전환율 (%)']);
-      _needJobData.forEach((category, data) {
-        final views = data['views']!;
-        final applies = data['applies']!;
-        final rate = views > 0 ? (applies / views * 100) : 0;
-        rows.add([category, views, applies, rate.toStringAsFixed(1)]);
-      });
-      rows.add([]);
-      
-      // 5. Chat Response Time
-      rows.add(['5. 채팅 응답 속도']);
-      rows.add(['지표', '시간 (분)']);
-      rows.add(['평균', _chatResponseTime['average']?.toStringAsFixed(1) ?? 'N/A']);
-      rows.add(['중앙값', _chatResponseTime['median']?.toStringAsFixed(1) ?? 'N/A']);
-      
-      // Convert to CSV
-      final csv = const ListToCsvConverter().convert(rows);
-      
-      // Save file (Web platform - show data)
-      if (kIsWeb) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('CSV 데이터'),
-              content: SingleChildScrollView(
-                child: SelectableText(csv),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('닫기'),
-                ),
-              ],
-            ),
-          );
-        }
-      } else {
-        // Mobile platform - save to file
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/analytics_${DateTime.now().millisecondsSinceEpoch}.csv';
-        final file = File(path);
-        await file.writeAsString(csv);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('CSV 파일 저장 완료: $path')),
-          );
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error exporting CSV: $e');
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CSV 내보내기 실패')),
-        );
-      }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('데이터 내보내기 기능은 준비 중입니다')),
+      );
     }
   }
 

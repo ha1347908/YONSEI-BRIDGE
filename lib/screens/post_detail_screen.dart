@@ -5,7 +5,6 @@ import 'dart:convert';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import 'board_screen.dart';
-import 'simple_chat_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final Post post;
@@ -197,44 +196,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: ElevatedButton.icon(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close),
                       label: const Text('닫기'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: Color(0xFF0038A8)),
-                        foregroundColor: const Color(0xFF0038A8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        // Navigate to chat with this user
-                        if (currentUserId != null) {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => SimpleChatScreen(
-                                currentUserId: currentUserId,
-                                currentUserName: currentUserName,
-                                otherUserId: authorId,
-                                otherUserName: authorName,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.message),
-                      label: const Text('메시지'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6B4EFF),
-                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 2,
+                        backgroundColor: const Color(0xFF0038A8),
+                        foregroundColor: Colors.white,
                       ),
                     ),
                   ),

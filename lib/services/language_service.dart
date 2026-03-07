@@ -27,6 +27,13 @@ class LanguageService extends ChangeNotifier {
   Map<String, Map<String, String>> _getTranslations() {
     return {
       'ko': {
+        // MVP 신규 키
+        'info_board': '정보 게시판',
+        'info_board_desc_full': '학교 행정, 아르바이트 비자, 생활 꿀팁 등 공식 정보를 제공합니다',
+        'free_board_desc_full': '학생들 간의 질의응답과 자유로운 소통 공간입니다',
+        'my_page': '마이페이지',
+        'write_post': '글쓰기',
+        'be_first_to_write': '첫 번째 글을 작성해보세요!',
         // 앱 공통
         'app_name': 'YONSEI BRIDGE',
         'welcome': '환영합니다',
@@ -176,6 +183,13 @@ class LanguageService extends ChangeNotifier {
         'd4_1_job_warning': '아르바이트는 입국 후 6개월이 지나야 가능합니다',
       },
       'en': {
+        // MVP new keys
+        'info_board': 'Info Board',
+        'info_board_desc_full': 'Official information on school administration, work visas, and life tips',
+        'free_board_desc_full': 'A space for Q&A and free communication among students',
+        'my_page': 'My Page',
+        'write_post': 'Write',
+        'be_first_to_write': 'Be the first to write a post!',
         // App common
         'app_name': 'YONSEI BRIDGE',
         'welcome': 'Welcome',
@@ -325,6 +339,13 @@ class LanguageService extends ChangeNotifier {
         'd4_1_job_warning': 'Part-time work is only allowed 6 months after arrival',
       },
       'zh': {
+        // MVP 新键
+        'info_board': '信息板',
+        'info_board_desc_full': '提供学校行政、打工签证、生活技巧等官方信息',
+        'free_board_desc_full': '学生间问答和自由交流的空间',
+        'my_page': '我的主页',
+        'write_post': '写帖子',
+        'be_first_to_write': '成为第一个发帖的人！',
         // 应用通用
         'app_name': 'YONSEI BRIDGE',
         'welcome': '欢迎',
@@ -474,6 +495,13 @@ class LanguageService extends ChangeNotifier {
         'd4_1_job_warning': '入境6个月后才可以打工',
       },
       'ja': {
+        // MVP 新キー
+        'info_board': '情報掲示板',
+        'info_board_desc_full': '学校行政、アルバイトビザ、生活のヒントなど公式情報を提供します',
+        'free_board_desc_full': '学生間のQ&Aと自由なコミュニケーションスペースです',
+        'my_page': 'マイページ',
+        'write_post': '投稿する',
+        'be_first_to_write': '最初の投稿をしてみましょう！',
         // アプリ共通
         'app_name': 'YONSEI BRIDGE',
         'welcome': 'ようこそ',

@@ -9,8 +9,6 @@ import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/storage_service.dart';
 import 'services/language_service.dart';
-import 'services/privacy_screen_service.dart';
-import 'services/firebase_storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,46 +33,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  final _privacyService = PrivacyScreenService();
-  final _navigatorKey = GlobalKey<NavigatorState>();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _privacyService.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    
-    final context = _navigatorKey.currentContext;
-    if (context == null) return;
-    
-    switch (state) {
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-      case AppLifecycleState.hidden:
-        // App is going to background - show privacy mask
-        _privacyService.showPrivacyMask(context);
-        break;
-      case AppLifecycleState.resumed:
-        // App is back to foreground - hide privacy mask
-        _privacyService.hidePrivacyMask();
-        break;
-      case AppLifecycleState.detached:
-        break;
-    }
-  }
-
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -82,18 +41,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => StorageService()),
         ChangeNotifierProvider(create: (_) => LanguageService()..loadLanguage()),
-        ChangeNotifierProvider(create: (_) => FirebaseStorageService()),
       ],
       child: Consumer<LanguageService>(
         builder: (context, languageService, child) {
           return MaterialApp(
-            navigatorKey: _navigatorKey,
             title: 'YONSEI BRIDGE',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               useMaterial3: true,
               colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF0038A8), // Yonsei blue
+                seedColor: const Color(0xFF0038A8),
                 primary: const Color(0xFF0038A8),
                 secondary: const Color(0xFF6B4EFF),
               ),
@@ -130,7 +87,6 @@ class _SplashScreenState extends State<SplashScreen> {
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     
-    // Simulate splash screen delay
     await Future.delayed(const Duration(seconds: 2));
     
     if (mounted) {

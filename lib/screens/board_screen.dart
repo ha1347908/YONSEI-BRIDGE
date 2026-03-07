@@ -4,11 +4,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
 import 'post_detail_screen.dart';
 import 'create_post_screen.dart';
-import 'resume_form_screen.dart';
-import 'symptom_card_screen.dart';
+import '../models/post_model.dart';
+
+export '../models/post_model.dart';
+
+// BoardCategory - 게시판 카테고리 모델 (하위 호환용)
+class BoardCategory {
+  final String id;
+  final String title;
+  final IconData icon;
+  final Color color;
+  final String description;
+  final bool allowUserPost;
+
+  BoardCategory({
+    required this.id,
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.description,
+    required this.allowUserPost,
+  });
+}
 
 class BoardScreen extends StatefulWidget {
   final BoardCategory category;
@@ -20,7 +39,6 @@ class BoardScreen extends StatefulWidget {
 }
 
 class _BoardScreenState extends State<BoardScreen> {
-  // Sample posts - in a real app, these would come from Firebase
   List<Post> _posts = [];
   bool _isLoading = true;
 
@@ -42,11 +60,9 @@ class _BoardScreenState extends State<BoardScreen> {
       final List<dynamic> postsList = jsonDecode(postsJson);
       
       final loadedPosts = postsList.map((postData) {
-        // Convert base64 images to data URLs for display
         List<String>? imageUrls;
         if (postData['images'] != null && postData['images'] is List && (postData['images'] as List).isNotEmpty) {
           imageUrls = (postData['images'] as List).map((base64String) {
-            // Return data URL that can be used with Image.memory after decoding
             return base64String as String;
           }).toList();
         }
@@ -60,7 +76,7 @@ class _BoardScreenState extends State<BoardScreen> {
           createdAt: DateTime.parse(postData['created_at'] ?? DateTime.now().toIso8601String()),
           categoryId: postData['category'] ?? widget.category.id,
           isAdminPost: postData['author_id'] == 'welovejesus',
-          imageUrls: imageUrls, // Include image URLs
+          imageUrls: imageUrls,
         );
       }).toList();
       
@@ -78,40 +94,13 @@ class _BoardScreenState extends State<BoardScreen> {
   @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
+    final authService = Provider.of<AuthService>(context);
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: widget.category.color,
         foregroundColor: Colors.white,
         title: Text(widget.category.title),
-        actions: [
-          if (widget.category.id == 'need_job')
-            IconButton(
-              icon: const Icon(Icons.description),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ResumeFormScreen(),
-                  ),
-                );
-              },
-              tooltip: '이력서 작성하기',
-            ),
-          if (widget.category.id == 'hospital_info')
-            IconButton(
-              icon: const Icon(Icons.medical_information),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SymptomCardScreen(),
-                  ),
-                );
-              },
-              tooltip: '증상카드 작성하기',
-            ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -147,8 +136,6 @@ class _BoardScreenState extends State<BoardScreen> {
                           builder: (_) => PostDetailScreen(post: post),
                         ),
                       );
-                      
-                      // Reload posts if deleted
                       if (result == true) {
                         _loadPosts();
                       }
@@ -162,31 +149,21 @@ class _BoardScreenState extends State<BoardScreen> {
                             children: [
                               if (post.isAdminPost)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: widget.category.color,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(
                                     '관리자',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   post.title,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -194,29 +171,18 @@ class _BoardScreenState extends State<BoardScreen> {
                               IconButton(
                                 icon: Icon(
                                   isSaved ? Icons.bookmark : Icons.bookmark_border,
-                                  color: isSaved
-                                      ? widget.category.color
-                                      : Colors.grey,
+                                  color: isSaved ? widget.category.color : Colors.grey,
                                 ),
                                 onPressed: () {
                                   if (isSaved) {
                                     storageService.removeSavedPost(post.id);
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('저장이 취소되었습니다'),
-                                        duration: Duration(seconds: 1),
-                                      ),
+                                      const SnackBar(content: Text('저장이 취소되었습니다'), duration: Duration(seconds: 1)),
                                     );
                                   } else {
-                                    storageService.savePost(
-                                      post.id,
-                                      post.toMap(),
-                                    );
+                                    storageService.savePost(post.id, post.toMap());
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('게시글이 저장되었습니다'),
-                                        duration: Duration(seconds: 1),
-                                      ),
+                                      const SnackBar(content: Text('게시글이 저장되었습니다'), duration: Duration(seconds: 1)),
                                     );
                                   }
                                 },
@@ -226,43 +192,20 @@ class _BoardScreenState extends State<BoardScreen> {
                           const SizedBox(height: 8),
                           Text(
                             post.content,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              Icon(
-                                Icons.person,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
+                              Icon(Icons.person, size: 16, color: Colors.grey[600]),
                               const SizedBox(width: 4),
-                              Text(
-                                post.author,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
+                              Text(post.author, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                               const SizedBox(width: 16),
-                              Icon(
-                                Icons.access_time,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
+                              Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
                               const SizedBox(width: 4),
-                              Text(
-                                _formatDate(post.createdAt),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
+                              Text(_formatDate(post.createdAt), style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                             ],
                           ),
                         ],
@@ -284,18 +227,11 @@ class _BoardScreenState extends State<BoardScreen> {
                     ),
                   ),
                 );
-                
-                // Reload posts if a new post was created
-                if (result == true) {
-                  _loadPosts();
-                }
+                if (result == true) _loadPosts();
               },
               backgroundColor: widget.category.color,
               icon: const Icon(Icons.edit, color: Colors.white),
-              label: const Text(
-                '글쓰기',
-                style: TextStyle(color: Colors.white),
-              ),
+              label: const Text('글쓰기', style: TextStyle(color: Colors.white)),
             )
           : null,
     );
@@ -303,88 +239,17 @@ class _BoardScreenState extends State<BoardScreen> {
 
   bool _shouldShowWriteButton(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
-    
-    // 관리자는 모든 게시판에 글쓰기 가능
-    if (authService.isAnyAdmin) {
-      return true;
-    }
-    
-    // 일반 사용자는 자유게시판(free_board)만 글쓰기 가능
-    if (widget.category.id == 'free_board') {
-      return true;
-    }
-    
+    if (authService.isAnyAdmin) return true;
+    if (widget.category.id == 'free_board') return true;
     return false;
   }
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-
-    if (diff.inDays > 0) {
-      return '${diff.inDays}일 전';
-    } else if (diff.inHours > 0) {
-      return '${diff.inHours}시간 전';
-    } else if (diff.inMinutes > 0) {
-      return '${diff.inMinutes}분 전';
-    } else {
-      return '방금 전';
-    }
-  }
-}
-
-class Post {
-  final String id;
-  final String title;
-  final String content;
-  final String author;
-  final String authorId;
-  final DateTime createdAt;
-  final String categoryId;
-  final bool isAdminPost;
-  final List<String>? imageUrls;
-  final Map<String, dynamic>? targetFilters;
-
-  Post({
-    required this.id,
-    required this.title,
-    required this.content,
-    required this.author,
-    required this.authorId,
-    required this.createdAt,
-    required this.categoryId,
-    this.isAdminPost = false,
-    this.imageUrls,
-    this.targetFilters,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'content': content,
-      'author': author,
-      'author_id': authorId,
-      'createdAt': createdAt.toIso8601String(),
-      'categoryId': categoryId,
-      'isAdminPost': isAdminPost,
-      'imageUrls': imageUrls,
-      'target_filters': targetFilters,
-    };
-  }
-
-  factory Post.fromMap(Map<String, dynamic> map) {
-    return Post(
-      id: map['id'] as String,
-      title: map['title'] as String,
-      content: map['content'] as String,
-      author: map['author'] as String,
-      authorId: map['author_id'] as String? ?? '',
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      categoryId: map['categoryId'] as String,
-      isAdminPost: map['isAdminPost'] as bool? ?? false,
-      imageUrls: (map['imageUrls'] as List<dynamic>?)?.cast<String>(),
-      targetFilters: map['target_filters'] != null ? Map<String, dynamic>.from(map['target_filters']) : null,
-    );
+    if (diff.inDays > 0) return '${diff.inDays}일 전';
+    if (diff.inHours > 0) return '${diff.inHours}시간 전';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}분 전';
+    return '방금 전';
   }
 }
