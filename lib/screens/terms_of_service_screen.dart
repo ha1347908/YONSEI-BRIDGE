@@ -78,7 +78,8 @@ YONSEI BRIDGE 이용약관
 본 약관은 2024년 1월 1일부터 시행합니다.
 
 연락처:
-- 이메일: support@yonseibridge.com
+- 이메일: iamharam@yonsei.ac.kr
+- 전화: 010-2620-4267
 - 주소: 강원도 원주시 연세대학교
 ''';
 
@@ -153,7 +154,8 @@ Addendum
 These Terms shall be effective from January 1, 2024.
 
 Contact:
-- Email: support@yonseibridge.com
+- Email: iamharam@yonsei.ac.kr
+- Phone: 010-2620-4267
 - Address: Yonsei University, Wonju, Gangwon-do, South Korea
 ''';
 
@@ -228,7 +230,8 @@ YONSEI BRIDGE 使用条款
 本条款自2024年1月1日起施行。
 
 联系方式：
-- 电子邮件：support@yonseibridge.com
+- 电子邮件：iamharam@yonsei.ac.kr
+- 电话：010-2620-4267
 - 地址：韩国江原道原州市延世大学
 ''';
 
@@ -303,7 +306,8 @@ YONSEI BRIDGE 利用規約
 本規約は2024年1月1日から施行します。
 
 連絡先：
-- メール：support@yonseibridge.com
+- メール：iamharam@yonsei.ac.kr
+- 電話：010-2620-4267
 - 住所：大韓民国 江原道 原州市 延世大学
 ''';
 

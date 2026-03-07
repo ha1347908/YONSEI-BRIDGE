@@ -1,385 +1,322 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import '../services/language_service.dart';
-import 'package:fl_chart/fl_chart.dart';
 
+/// MVP 핵심 성장 지표 대시보드
+/// 4개 섹션: 사용자 활성 지표 / 콘텐츠 반응도 / 리텐션 분석 / 관리자 운영 지표
 class AdminAnalyticsDashboardScreen extends StatefulWidget {
   const AdminAnalyticsDashboardScreen({super.key});
 
   @override
-  State<AdminAnalyticsDashboardScreen> createState() => _AdminAnalyticsDashboardScreenState();
+  State<AdminAnalyticsDashboardScreen> createState() =>
+      _AdminAnalyticsDashboardScreenState();
 }
 
-class _AdminAnalyticsDashboardScreenState extends State<AdminAnalyticsDashboardScreen> {
+class _AdminAnalyticsDashboardScreenState
+    extends State<AdminAnalyticsDashboardScreen> {
   bool _isLoading = true;
-  String _selectedPeriod = '30'; // 7, 30, or 'all'
-  
-  // Retention data
+  String _selectedPeriod = '30'; // '7', '30', 'all'
+
+  // ── 1. 사용자 활성 지표 ──────────────────────────────
+  int _dau = 0;
+  int _mau = 0;
+  int _pendingApprovalCount = 0;
+  Map<String, int> _usersByLanguage = {};
+
+  // ── 2. 콘텐츠 반응도 ──────────────────────────────────
+  List<Map<String, dynamic>> _topInfoPosts = []; // TOP 5 조회수 (정보게시판)
+  int _freeBoardPostCount = 0;
+  int _freeBoardCommentCount = 0;
+  int _scrapCount = 0;
+
+  // ── 3. 리텐션 분석 ────────────────────────────────────
   Map<String, Map<String, double>> _retentionData = {};
-  
-  // MAU by Visa Type
-  Map<String, int> _mauByVisa = {};
-  
-  // Living Setup clicks
-  Map<String, int> _livingSetupClicks = {};
-  
-  // NeedJob conversion rate
-  Map<String, Map<String, int>> _needJobData = {};
-  
-  // Chat response time
-  Map<String, double> _chatResponseTime = {};
+  double _actionRateReadInfo = 0; // 정보글 1개 이상 읽기 비율
+  double _actionRateWriteComment = 0; // 댓글 작성 비율
+
+  // ── 4. 관리자 운영 지표 ───────────────────────────────
+  double _avgApprovalHours = 0;
+  int _blockedUserCount = 0;
+  int _rejectedUserCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadAnalyticsData();
+    _loadAllData();
   }
 
-  Future<void> _loadAnalyticsData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  // ─────────────────────────────────────────────────────
+  // 데이터 로드
+  // ─────────────────────────────────────────────────────
+  Future<void> _loadAllData() async {
+    setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now();
-      final cutoffDate = _selectedPeriod == 'all' 
+      final cutoff = _selectedPeriod == 'all'
           ? DateTime(2020, 1, 1)
           : now.subtract(Duration(days: int.parse(_selectedPeriod)));
 
-      // 1. Load Retention Data
-      await _loadRetentionData(prefs, cutoffDate);
-      
-      // 2. Load MAU by Visa Type
-      await _loadMAUByVisa(prefs, cutoffDate);
-      
-      // 3. Load Living Setup Clicks
-      await _loadLivingSetupClicks(prefs, cutoffDate);
-      
-      // 4. Load NeedJob Conversion Rate
-      await _loadNeedJobData(prefs, cutoffDate);
-      
-      // 5. Load Chat Response Time
-      await _loadChatResponseTime(prefs, cutoffDate);
-
-      setState(() {
-        _isLoading = false;
-      });
+      await Future.wait([
+        _loadUserActiveMetrics(prefs, now, cutoff),
+        _loadContentMetrics(prefs, cutoff),
+        _loadRetentionMetrics(prefs, cutoff),
+        _loadAdminOperationMetrics(prefs),
+      ]);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error loading analytics: $e');
-      }
-      setState(() {
-        _isLoading = false;
-      });
+      if (kDebugMode) debugPrint('Analytics load error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _loadRetentionData(SharedPreferences prefs, DateTime cutoffDate) async {
-    // Calculate retention from user login data
-    final retentionData = <String, Map<String, double>>{};
-    
-    // Get all user keys
-    final allKeys = prefs.getKeys();
-    final userKeys = allKeys.where((key) => key.startsWith('user_') && !key.contains('login_')).toList();
-    
-    for (final userKey in userKeys) {
-      final userData = prefs.getString(userKey);
-      if (userData != null) {
-        try {
-          final user = jsonDecode(userData);
-          final signupDate = DateTime.parse(user['signup_date'] ?? DateTime.now().toIso8601String());
-          
-          if (signupDate.isAfter(cutoffDate)) {
-            final cohortWeek = DateFormat('yyyy-MM-dd').format(signupDate);
-            
-            if (!retentionData.containsKey(cohortWeek)) {
-              retentionData[cohortWeek] = {'day1': 0, 'day7': 0, 'day30': 0, 'total': 0};
-            }
-            
-            retentionData[cohortWeek]!['total'] = (retentionData[cohortWeek]!['total']! + 1);
-            
-            // Check login activity
-            final loginKey = 'user_login_${user['userId']}';
-            final loginData = prefs.getString(loginKey);
-            if (loginData != null) {
-              final logins = jsonDecode(loginData) as List;
-              
-              // Day 1 retention
-              final day1 = signupDate.add(const Duration(days: 1));
-              if (logins.any((l) => DateTime.parse(l).isAfter(day1) && DateTime.parse(l).isBefore(day1.add(const Duration(days: 1))))) {
-                retentionData[cohortWeek]!['day1'] = (retentionData[cohortWeek]!['day1']! + 1);
-              }
-              
-              // Day 7 retention
-              final day7 = signupDate.add(const Duration(days: 7));
-              if (logins.any((l) => DateTime.parse(l).isAfter(day7) && DateTime.parse(l).isBefore(day7.add(const Duration(days: 1))))) {
-                retentionData[cohortWeek]!['day7'] = (retentionData[cohortWeek]!['day7']! + 1);
-              }
-              
-              // Day 30 retention
-              final day30 = signupDate.add(const Duration(days: 30));
-              if (logins.any((l) => DateTime.parse(l).isAfter(day30) && DateTime.parse(l).isBefore(day30.add(const Duration(days: 1))))) {
-                retentionData[cohortWeek]!['day30'] = (retentionData[cohortWeek]!['day30']! + 1);
-              }
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing user data: $e');
-          }
-        }
-      }
-    }
-    
-    // Calculate percentages
-    retentionData.forEach((cohort, data) {
-      final total = data['total']!;
-      if (total > 0) {
-        data['day1'] = (data['day1']! / total * 100);
-        data['day7'] = (data['day7']! / total * 100);
-        data['day30'] = (data['day30']! / total * 100);
-      }
-    });
-    
-    setState(() {
-      _retentionData = retentionData;
-    });
-  }
-
-  Future<void> _loadMAUByVisa(SharedPreferences prefs, DateTime cutoffDate) async {
-    final mauData = <String, int>{};
-    final now = DateTime.now();
+  /// 1. 사용자 활성 지표
+  Future<void> _loadUserActiveMetrics(
+      SharedPreferences prefs, DateTime now, DateTime cutoff) async {
+    final today = DateTime(now.year, now.month, now.day);
     final monthStart = DateTime(now.year, now.month, 1);
-    
-    // Get all users
-    final allKeys = prefs.getKeys();
-    final userKeys = allKeys.where((key) => key.startsWith('user_demo_') || key.startsWith('user_')).toList();
-    
-    for (final userKey in userKeys) {
-      final userData = prefs.getString(userKey);
-      if (userData != null) {
-        try {
-          final user = jsonDecode(userData);
-          final userId = user['userId'] ?? userKey.replaceAll('user_demo_', '').replaceAll('user_', '');
-          
-          // Check if user was active this month
-          final loginKey = 'user_login_$userId';
-          final loginData = prefs.getString(loginKey);
-          if (loginData != null) {
-            final logins = jsonDecode(loginData) as List;
-            final hasLoginThisMonth = logins.any((l) {
-              final loginDate = DateTime.parse(l);
-              return loginDate.isAfter(monthStart);
-            });
-            
-            if (hasLoginThisMonth) {
-              final visa = user['visa'] ?? user['visaCode'] ?? 'Unknown';
-              mauData[visa] = (mauData[visa] ?? 0) + 1;
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing MAU data: $e');
-          }
-        }
-      }
-    }
-    
-    setState(() {
-      _mauByVisa = mauData;
-    });
-  }
 
-  Future<void> _loadLivingSetupClicks(SharedPreferences prefs, DateTime cutoffDate) async {
-    final clickData = <String, int>{};
-    
-    // Get all living setup click logs
-    final allKeys = prefs.getKeys();
-    final clickKeys = allKeys.where((key) => key.startsWith('living_setup_click_')).toList();
-    
-    for (final clickKey in clickKeys) {
-      final clickLog = prefs.getString(clickKey);
-      if (clickLog != null) {
-        try {
-          final log = jsonDecode(clickLog);
-          final clickDate = DateTime.parse(log['timestamp']);
-          
-          if (clickDate.isAfter(cutoffDate)) {
-            final category = log['category'] ?? 'Unknown';
-            clickData[category] = (clickData[category] ?? 0) + 1;
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing click data: $e');
-          }
-        }
-      }
-    }
-    
-    // Sort by clicks and get top 10
-    final sortedEntries = clickData.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    
-    final top10 = Map.fromEntries(sortedEntries.take(10));
-    
-    setState(() {
-      _livingSetupClicks = top10;
-    });
-  }
+    int dau = 0, mau = 0, pending = 0;
+    final langCount = <String, int>{};
 
-  Future<void> _loadNeedJobData(SharedPreferences prefs, DateTime cutoffDate) async {
-    final jobData = <String, Map<String, int>>{};
-    
-    // Get all NeedJob interaction logs
     final allKeys = prefs.getKeys();
-    final viewKeys = allKeys.where((key) => key.startsWith('needjob_view_')).toList();
-    final applyKeys = allKeys.where((key) => key.startsWith('needjob_apply_')).toList();
-    
-    // Count views by category
-    for (final viewKey in viewKeys) {
-      final viewLog = prefs.getString(viewKey);
-      if (viewLog != null) {
-        try {
-          final log = jsonDecode(viewLog);
-          final viewDate = DateTime.parse(log['timestamp']);
-          
-          if (viewDate.isAfter(cutoffDate)) {
-            final category = log['category'] ?? 'Unknown';
-            if (!jobData.containsKey(category)) {
-              jobData[category] = {'views': 0, 'applies': 0};
-            }
-            jobData[category]!['views'] = (jobData[category]!['views']! + 1);
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing view data: $e');
-          }
-        }
-      }
-    }
-    
-    // Count applies by category
-    for (final applyKey in applyKeys) {
-      final applyLog = prefs.getString(applyKey);
-      if (applyLog != null) {
-        try {
-          final log = jsonDecode(applyLog);
-          final applyDate = DateTime.parse(log['timestamp']);
-          
-          if (applyDate.isAfter(cutoffDate)) {
-            final category = log['category'] ?? 'Unknown';
-            if (!jobData.containsKey(category)) {
-              jobData[category] = {'views': 0, 'applies': 0};
-            }
-            jobData[category]!['applies'] = (jobData[category]!['applies']! + 1);
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing apply data: $e');
-          }
-        }
-      }
-    }
-    
-    setState(() {
-      _needJobData = jobData;
-    });
-  }
 
-  Future<void> _loadChatResponseTime(SharedPreferences prefs, DateTime cutoffDate) async {
-    final responseTimes = <double>[];
-    
-    // Get all chat message logs
-    final allKeys = prefs.getKeys();
-    final messageKeys = allKeys.where((key) => key.startsWith('chat_message_')).toList();
-    
-    final conversations = <String, List<Map<String, dynamic>>>{};
-    
-    for (final messageKey in messageKeys) {
-      final messageData = prefs.getString(messageKey);
-      if (messageData != null) {
+    // 가입 승인 대기
+    for (final key in allKeys) {
+      if (key.startsWith('user_') && !key.contains('login_')) {
+        final raw = prefs.getString(key);
+        if (raw == null) continue;
         try {
-          final message = jsonDecode(messageData);
-          final messageDate = DateTime.parse(message['timestamp']);
-          
-          if (messageDate.isAfter(cutoffDate)) {
-            final conversationId = message['conversationId'] ?? 'unknown';
-            if (!conversations.containsKey(conversationId)) {
-              conversations[conversationId] = [];
-            }
-            conversations[conversationId]!.add(message);
+          final u = jsonDecode(raw) as Map<String, dynamic>;
+          final status = u['status'] ?? u['approvalStatus'] ?? '';
+          if (status == 'Pending' || status == 'pending') pending++;
+
+          // 언어별 분류
+          final lang = u['preferredLanguage'] ?? u['language'] ?? 'ko';
+          langCount[lang] = (langCount[lang] ?? 0) + 1;
+
+          // 로그인 기록으로 DAU/MAU 계산
+          final uid = u['userId'] ?? u['id'] ?? '';
+          if (uid.isEmpty) continue;
+          final loginRaw = prefs.getString('user_login_$uid');
+          if (loginRaw == null) continue;
+          final logins = (jsonDecode(loginRaw) as List).cast<String>();
+          for (final l in logins) {
+            final d = DateTime.tryParse(l);
+            if (d == null) continue;
+            if (d.isAfter(today)) dau++;
+            if (d.isAfter(monthStart)) mau++;
           }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Error parsing message data: $e');
-          }
-        }
+        } catch (_) {}
       }
     }
-    
-    // Calculate response times
-    for (final messages in conversations.values) {
-      messages.sort((a, b) => DateTime.parse(a['timestamp']).compareTo(DateTime.parse(b['timestamp'])));
-      
-      for (int i = 0; i < messages.length - 1; i++) {
-        if (messages[i]['senderId'] != messages[i + 1]['senderId']) {
-          final firstTime = DateTime.parse(messages[i]['timestamp']);
-          final secondTime = DateTime.parse(messages[i + 1]['timestamp']);
-          final diffMinutes = secondTime.difference(firstTime).inMinutes.toDouble();
-          
-          if (diffMinutes < 1440) { // Less than 24 hours
-            responseTimes.add(diffMinutes);
-          }
-        }
-      }
-    }
-    
-    // Calculate average and median
-    if (responseTimes.isNotEmpty) {
-      responseTimes.sort();
-      final average = responseTimes.reduce((a, b) => a + b) / responseTimes.length;
-      final median = responseTimes.length.isOdd
-          ? responseTimes[responseTimes.length ~/ 2]
-          : (responseTimes[responseTimes.length ~/ 2 - 1] + responseTimes[responseTimes.length ~/ 2]) / 2;
-      
+
+    if (mounted) {
       setState(() {
-        _chatResponseTime = {
-          'average': average,
-          'median': median,
-        };
+        _dau = dau;
+        _mau = mau;
+        _pendingApprovalCount = pending;
+        _usersByLanguage = langCount;
       });
     }
   }
 
-  Future<void> _exportToCSV() async {
+  /// 2. 콘텐츠 반응도
+  Future<void> _loadContentMetrics(
+      SharedPreferences prefs, DateTime cutoff) async {
+    // 정보게시판 TOP 5 (posts_info_board)
+    final infoRaw = prefs.getString('posts_info_board');
+    final infoPosts = <Map<String, dynamic>>[];
+    if (infoRaw != null) {
+      try {
+        final list = (jsonDecode(infoRaw) as List).cast<Map<String, dynamic>>();
+        infoPosts.addAll(list);
+      } catch (_) {}
+    }
+    infoPosts.sort((a, b) =>
+        ((b['viewCount'] ?? 0) as int).compareTo((a['viewCount'] ?? 0) as int));
+
+    // 자유게시판 게시글·댓글 수
+    final freeRaw = prefs.getString('posts_free_board');
+    int freePostCount = 0, commentCount = 0;
+    if (freeRaw != null) {
+      try {
+        final list = (jsonDecode(freeRaw) as List).cast<Map<String, dynamic>>();
+        freePostCount = list.length;
+        for (final p in list) {
+          final cmts = p['comments'] as List? ?? [];
+          commentCount += cmts.length;
+        }
+      } catch (_) {}
+    }
+
+    // 스크랩 수 (saved_posts_*)
+    int scrap = 0;
+    for (final key in prefs.getKeys()) {
+      if (key.startsWith('saved_posts_')) {
+        final raw = prefs.getString(key);
+        if (raw != null) {
+          try {
+            scrap += (jsonDecode(raw) as List).length;
+          } catch (_) {}
+        }
+      }
+    }
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('데이터 내보내기 기능은 준비 중입니다')),
-      );
+      setState(() {
+        _topInfoPosts = infoPosts.take(5).toList();
+        _freeBoardPostCount = freePostCount;
+        _freeBoardCommentCount = commentCount;
+        _scrapCount = scrap;
+      });
     }
   }
 
+  /// 3. 리텐션 분석
+  Future<void> _loadRetentionMetrics(
+      SharedPreferences prefs, DateTime cutoff) async {
+    final retentionData = <String, Map<String, double>>{};
+    int totalApproved = 0, readInfo = 0, wroteComment = 0;
+
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith('user_') || key.contains('login_')) continue;
+      final raw = prefs.getString(key);
+      if (raw == null) continue;
+      try {
+        final u = jsonDecode(raw) as Map<String, dynamic>;
+        final signupStr = u['signup_date'] ?? u['createdAt'];
+        if (signupStr == null) continue;
+        final signupDate = DateTime.tryParse(signupStr);
+        if (signupDate == null || signupDate.isBefore(cutoff)) continue;
+
+        final status = u['status'] ?? '';
+        if (status == 'Approved' || status == 'approved') totalApproved++;
+
+        final cohort = DateFormat('yyyy-MM-dd').format(signupDate);
+        retentionData.putIfAbsent(
+            cohort, () => {'day1': 0, 'day7': 0, 'day30': 0, 'total': 0});
+        retentionData[cohort]!['total'] =
+            retentionData[cohort]!['total']! + 1;
+
+        final uid = u['userId'] ?? u['id'] ?? '';
+        if (uid.isEmpty) continue;
+        final loginRaw = prefs.getString('user_login_$uid');
+        if (loginRaw != null) {
+          final logins = (jsonDecode(loginRaw) as List).cast<String>();
+          _checkRetention(logins, signupDate, retentionData[cohort]!);
+        }
+
+        // 핵심 액션: 정보글 읽기 여부
+        final readRaw = prefs.getString('read_info_$uid');
+        if (readRaw != null && (jsonDecode(readRaw) as List).isNotEmpty) {
+          readInfo++;
+        }
+
+        // 핵심 액션: 댓글 작성 여부
+        final cmtRaw = prefs.getString('comment_history_$uid');
+        if (cmtRaw != null && (jsonDecode(cmtRaw) as List).isNotEmpty) {
+          wroteComment++;
+        }
+      } catch (_) {}
+    }
+
+    // 비율(%) 변환
+    retentionData.forEach((_, data) {
+      final t = data['total']!;
+      if (t > 0) {
+        data['day1'] = data['day1']! / t * 100;
+        data['day7'] = data['day7']! / t * 100;
+        data['day30'] = data['day30']! / t * 100;
+      }
+    });
+
+    if (mounted) {
+      setState(() {
+        _retentionData = retentionData;
+        _actionRateReadInfo =
+            totalApproved > 0 ? readInfo / totalApproved * 100 : 0;
+        _actionRateWriteComment =
+            totalApproved > 0 ? wroteComment / totalApproved * 100 : 0;
+      });
+    }
+  }
+
+  void _checkRetention(List<String> logins, DateTime signupDate,
+      Map<String, double> cohortData) {
+    bool d1 = false, d7 = false, d30 = false;
+    for (final l in logins) {
+      final d = DateTime.tryParse(l);
+      if (d == null) continue;
+      final diff = d.difference(signupDate).inDays;
+      if (diff >= 1 && diff < 2) d1 = true;
+      if (diff >= 7 && diff < 8) d7 = true;
+      if (diff >= 30 && diff < 31) d30 = true;
+    }
+    if (d1) cohortData['day1'] = cohortData['day1']! + 1;
+    if (d7) cohortData['day7'] = cohortData['day7']! + 1;
+    if (d30) cohortData['day30'] = cohortData['day30']! + 1;
+  }
+
+  /// 4. 관리자 운영 지표
+  Future<void> _loadAdminOperationMetrics(SharedPreferences prefs) async {
+    int blocked = 0, rejected = 0;
+    final approvalTimes = <double>[];
+
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith('user_') || key.contains('login_')) continue;
+      final raw = prefs.getString(key);
+      if (raw == null) continue;
+      try {
+        final u = jsonDecode(raw) as Map<String, dynamic>;
+        final status = u['status'] ?? u['approvalStatus'] ?? '';
+        if (status == 'Blocked' || status == 'blocked') blocked++;
+        if (status == 'Rejected' || status == 'rejected') rejected++;
+
+        // 승인 소요 시간 (신청일 → 승인일)
+        final signupStr = u['signup_date'] ?? u['createdAt'];
+        final approvedStr = u['approvedAt'] ?? u['approved_at'];
+        if (signupStr != null && approvedStr != null) {
+          final signup = DateTime.tryParse(signupStr);
+          final approved = DateTime.tryParse(approvedStr);
+          if (signup != null && approved != null) {
+            approvalTimes
+                .add(approved.difference(signup).inMinutes.toDouble() / 60);
+          }
+        }
+      } catch (_) {}
+    }
+
+    final avgHours = approvalTimes.isNotEmpty
+        ? approvalTimes.reduce((a, b) => a + b) / approvalTimes.length
+        : 0.0;
+
+    if (mounted) {
+      setState(() {
+        _blockedUserCount = blocked;
+        _rejectedUserCount = rejected;
+        _avgApprovalHours = avgHours;
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // build
+  // ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text('데이터 분석 대시보드'),
         backgroundColor: const Color(0xFF0038A8),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _exportToCSV,
-            tooltip: 'CSV 다운로드',
-          ),
-          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadAnalyticsData,
+            onPressed: _loadAllData,
             tooltip: '새로고침',
           ),
         ],
@@ -387,517 +324,497 @@ class _AdminAnalyticsDashboardScreenState extends State<AdminAnalyticsDashboardS
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadAnalyticsData,
+              onRefresh: _loadAllData,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Period filter
                     _buildPeriodFilter(),
+                    const SizedBox(height: 20),
+
+                    // ① 사용자 활성 지표
+                    _buildSectionHeader(
+                        '① 사용자 활성 지표', Icons.people_alt, const Color(0xFF0038A8)),
+                    const SizedBox(height: 12),
+                    _buildUserActiveSection(),
                     const SizedBox(height: 24),
-                    
-                    // 1. Retention Analysis
+
+                    // ② 콘텐츠 반응도
+                    _buildSectionHeader(
+                        '② 콘텐츠 반응도', Icons.bar_chart, const Color(0xFF6B4EFF)),
+                    const SizedBox(height: 12),
+                    _buildContentSection(),
+                    const SizedBox(height: 24),
+
+                    // ③ 리텐션 분석
+                    _buildSectionHeader(
+                        '③ 리텐션 분석', Icons.trending_up, const Color(0xFF00897B)),
+                    const SizedBox(height: 12),
                     _buildRetentionSection(),
                     const SizedBox(height: 24),
-                    
-                    // 2. MAU by Visa Type
-                    _buildMAUSection(),
-                    const SizedBox(height: 24),
-                    
-                    // 3. Living Setup Clicks
-                    _buildLivingSetupSection(),
-                    const SizedBox(height: 24),
-                    
-                    // 4. NeedJob Conversion Rate
-                    _buildNeedJobSection(),
-                    const SizedBox(height: 24),
-                    
-                    // 5. Chat Response Time
-                    _buildChatResponseSection(),
+
+                    // ④ 관리자 운영 지표
+                    _buildSectionHeader(
+                        '④ 관리자 운영 지표', Icons.admin_panel_settings, Colors.orange[700]!),
+                    const SizedBox(height: 12),
+                    _buildAdminOperationSection(),
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 공통 헬퍼 위젯
+  // ─────────────────────────────────────────────────────
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
+    );
+  }
+
+  Widget _buildStatTile(String label, String value,
+      {Color? valueColor, IconData? icon}) {
+    return Column(
+      children: [
+        if (icon != null) Icon(icon, color: valueColor ?? Colors.grey, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: valueColor ?? const Color(0xFF0038A8),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 
   Widget _buildPeriodFilter() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '기간 설정',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _buildPeriodChip('최근 7일', '7'),
-                const SizedBox(width: 8),
-                _buildPeriodChip('최근 30일', '30'),
-                const SizedBox(width: 8),
-                _buildPeriodChip('전체 기간', 'all'),
-              ],
-            ),
-          ],
-        ),
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('기간 설정',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _periodChip('최근 7일', '7'),
+              const SizedBox(width: 8),
+              _periodChip('최근 30일', '30'),
+              const SizedBox(width: 8),
+              _periodChip('전체', 'all'),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildPeriodChip(String label, String value) {
-    final isSelected = _selectedPeriod == value;
+  Widget _periodChip(String label, String value) {
+    final selected = _selectedPeriod == value;
     return ChoiceChip(
       label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedPeriod = value;
-          });
-          _loadAnalyticsData();
+      selected: selected,
+      onSelected: (v) {
+        if (v) {
+          setState(() => _selectedPeriod = value);
+          _loadAllData();
         }
       },
       selectedColor: const Color(0xFF0038A8),
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black,
-      ),
+      labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87,
+          fontSize: 13),
     );
   }
 
-  Widget _buildRetentionSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.trending_up, color: Color(0xFF0038A8)),
-                const SizedBox(width: 8),
-                const Text(
-                  '1. 리텐션 분석 (Retention Analysis)',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            if (_retentionData.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text('리텐션 데이터가 없습니다'),
-                ),
-              )
-            else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('코호트')),
-                    DataColumn(label: Text('Day 1 (%)')),
-                    DataColumn(label: Text('Day 7 (%)')),
-                    DataColumn(label: Text('Day 30 (%)')),
-                  ],
-                  rows: _retentionData.entries.map((entry) {
-                    return DataRow(cells: [
-                      DataCell(Text(entry.key)),
-                      DataCell(Text(entry.value['day1']!.toStringAsFixed(1))),
-                      DataCell(Text(entry.value['day7']!.toStringAsFixed(1))),
-                      DataCell(Text(entry.value['day30']!.toStringAsFixed(1))),
-                    ]);
-                  }).toList(),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMAUSection() {
-    if (_mauByVisa.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  // ─────────────────────────────────────────────────────
+  // ① 사용자 활성 지표
+  // ─────────────────────────────────────────────────────
+  Widget _buildUserActiveSection() {
+    return Column(
+      children: [
+        // DAU / MAU / 승인 대기
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.people, color: Color(0xFF0038A8)),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '2. 비자별 활성 유저 (MAU by Visa Type)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text('비자별 활성 유저 데이터가 없습니다'),
-                ),
-              ),
+              _buildStatTile('DAU\n(오늘 접속)', '$_dau명',
+                  valueColor: const Color(0xFF0038A8), icon: Icons.today),
+              _verticalDivider(),
+              _buildStatTile('MAU\n(이번 달 접속)', '$_mau명',
+                  valueColor: const Color(0xFF6B4EFF), icon: Icons.calendar_month),
+              _verticalDivider(),
+              _buildStatTile('신규 가입\n승인 대기', '$_pendingApprovalCount명',
+                  valueColor: Colors.orange[700], icon: Icons.hourglass_top),
             ],
           ),
         ),
+        const SizedBox(height: 12),
+
+        // 언어별 사용자 비율
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('언어별 사용자 비율',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              if (_usersByLanguage.isEmpty)
+                const Center(
+                    child: Text('데이터 없음',
+                        style: TextStyle(color: Colors.grey)))
+              else
+                ..._buildLanguageBar(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildLanguageBar() {
+    final labels = {'ko': '한국어', 'en': 'English', 'zh': '中文', 'ja': '日本語'};
+    final colors = {
+      'ko': const Color(0xFF0038A8),
+      'en': const Color(0xFF6B4EFF),
+      'zh': Colors.red[400]!,
+      'ja': Colors.green[600]!,
+    };
+    final total = _usersByLanguage.values.fold(0, (a, b) => a + b);
+    return _usersByLanguage.entries.map((e) {
+      final pct = total > 0 ? e.value / total : 0.0;
+      final label = labels[e.key] ?? e.key;
+      final color = colors[e.key] ?? Colors.grey;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500)),
+                Text('${e.value}명 (${(pct * 100).toStringAsFixed(1)}%)',
+                    style: TextStyle(fontSize: 13, color: color,
+                        fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 8,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+          ],
+        ),
       );
-    }
+    }).toList();
+  }
 
-    final total = _mauByVisa.values.reduce((a, b) => a + b);
-    
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.people, color: Color(0xFF0038A8)),
-                const SizedBox(width: 8),
-                const Text(
-                  '2. 비자별 활성 유저 (MAU by Visa Type)',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '총 활성 유저: $total명',
+  Widget _verticalDivider() {
+    return Container(height: 48, width: 1, color: Colors.grey[200]);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // ② 콘텐츠 반응도
+  // ─────────────────────────────────────────────────────
+  Widget _buildContentSection() {
+    return Column(
+      children: [
+        // 자유게시판 게시글-댓글 비율 + 스크랩 수
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatTile('자유게시판\n게시글 수', '$_freeBoardPostCount건',
+                  valueColor: const Color(0xFF6B4EFF), icon: Icons.edit_note),
+              _verticalDivider(),
+              _buildStatTile('댓글 수', '$_freeBoardCommentCount건',
+                  valueColor: const Color(0xFF00897B), icon: Icons.comment),
+              _verticalDivider(),
+              _buildStatTile('게시글\n스크랩 수', '$_scrapCount건',
+                  valueColor: Colors.orange[700], icon: Icons.bookmark),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 정보게시판 TOP 5 조회수
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('정보게시판 TOP 5 조회수',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              if (_topInfoPosts.isEmpty)
+                const Center(
+                    child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text('게시글 데이터 없음',
+                      style: TextStyle(color: Colors.grey)),
+                ))
+              else
+                ..._topInfoPosts.asMap().entries.map((e) {
+                  final rank = e.key + 1;
+                  final post = e.value;
+                  final title =
+                      post['title'] as String? ?? '(제목 없음)';
+                  final views =
+                      (post['viewCount'] ?? post['views'] ?? 0) as int;
+                  return _buildRankRow(rank, title, '$views회');
+                }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRankRow(int rank, String title, String metric) {
+    final rankColor = rank == 1
+        ? const Color(0xFFFFD700)
+        : rank == 2
+            ? const Color(0xFFC0C0C0)
+            : rank == 3
+                ? const Color(0xFFCD7F32)
+                : Colors.grey[400]!;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: rankColor,
+            child: Text('$rank',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(title,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13))),
+          Text(metric,
               style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            ..._mauByVisa.entries.map((entry) {
-              final percentage = (entry.value / total * 100).toStringAsFixed(1);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          entry.key,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        Text(
-                          '${entry.value}명 ($percentage%)',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    LinearProgressIndicator(
-                      value: entry.value / total,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0038A8)),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0038A8))),
+        ],
       ),
     );
   }
 
-  Widget _buildLivingSetupSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.touch_app, color: Color(0xFF0038A8)),
-                const SizedBox(width: 8),
-                const Text(
-                  '3. 리빙셋업 클릭 로그 (TOP 10)',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            if (_livingSetupClicks.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text('클릭 로그 데이터가 없습니다'),
-                ),
-              )
-            else
-              ..._livingSetupClicks.entries.toList().asMap().entries.map((indexedEntry) {
-                final index = indexedEntry.key;
-                final entry = indexedEntry.value;
-                
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: index < 3 ? _getRankColor(index).withValues(alpha: 0.1) : Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: index < 3 ? _getRankColor(index) : Colors.grey[300]!,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: index < 3 ? _getRankColor(index) : Colors.grey[400],
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          entry.key,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${entry.value}회',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0038A8),
-                        ),
-                      ),
+  // ─────────────────────────────────────────────────────
+  // ③ 리텐션 분석
+  // ─────────────────────────────────────────────────────
+  Widget _buildRetentionSection() {
+    return Column(
+      children: [
+        // 핵심 액션 수행률
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('핵심 액션 수행률',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              _buildActionRateRow(
+                  '정보글 1개 이상 읽기', _actionRateReadInfo, const Color(0xFF0038A8)),
+              const SizedBox(height: 10),
+              _buildActionRateRow(
+                  '댓글 작성 경험', _actionRateWriteComment, const Color(0xFF6B4EFF)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Day-N 리텐션 테이블
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Day-N 리텐션 (코호트별)',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 12),
+              if (_retentionData.isEmpty)
+                const Center(
+                    child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text('리텐션 데이터 없음',
+                      style: TextStyle(color: Colors.grey)),
+                ))
+              else
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(Colors.grey[100]),
+                    columns: const [
+                      DataColumn(label: Text('코호트')),
+                      DataColumn(label: Text('Day 1 (%)')),
+                      DataColumn(label: Text('Day 7 (%)')),
+                      DataColumn(label: Text('Day 30 (%)')),
                     ],
+                    rows: _retentionData.entries.map((e) {
+                      return DataRow(cells: [
+                        DataCell(Text(e.key,
+                            style: const TextStyle(fontSize: 12))),
+                        DataCell(_retentionCell(e.value['day1']!)),
+                        DataCell(_retentionCell(e.value['day7']!)),
+                        DataCell(_retentionCell(e.value['day30']!)),
+                      ]);
+                    }).toList(),
                   ),
-                );
-              }),
-          ],
+                ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
-  Color _getRankColor(int index) {
-    switch (index) {
-      case 0:
-        return const Color(0xFFFFD700); // Gold
-      case 1:
-        return const Color(0xFFC0C0C0); // Silver
-      case 2:
-        return const Color(0xFFCD7F32); // Bronze
-      default:
-        return Colors.grey;
+  Widget _buildActionRateRow(String label, double rate, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            Text('${rate.toStringAsFixed(1)}%',
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: rate / 100,
+            minHeight: 8,
+            backgroundColor: Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _retentionCell(double value) {
+    Color color = Colors.grey;
+    if (value >= 40) {
+      color = Colors.green[700]!;
+    } else if (value >= 20) {
+      color = Colors.orange[700]!;
+    } else if (value > 0) {
+      color = Colors.red[400]!;
     }
-  }
-
-  Widget _buildNeedJobSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.work, color: Color(0xFF0038A8)),
-                const SizedBox(width: 8),
-                const Text(
-                  '4. 니드잡 지원 전환율',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            if (_needJobData.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text('니드잡 전환율 데이터가 없습니다'),
-                ),
-              )
-            else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('카테고리')),
-                    DataColumn(label: Text('조회수')),
-                    DataColumn(label: Text('지원수')),
-                    DataColumn(label: Text('전환율 (%)')),
-                  ],
-                  rows: _needJobData.entries.map((entry) {
-                    final views = entry.value['views']!;
-                    final applies = entry.value['applies']!;
-                    final rate = views > 0 ? (applies / views * 100) : 0;
-                    
-                    return DataRow(cells: [
-                      DataCell(Text(entry.key)),
-                      DataCell(Text('$views')),
-                      DataCell(Text('$applies')),
-                      DataCell(
-                        Text(
-                          rate.toStringAsFixed(1),
-                          style: TextStyle(
-                            color: rate >= 10 ? Colors.green : Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ]);
-                  }).toList(),
-                ),
-              ),
-          ],
-        ),
-      ),
+    return Text(
+      '${value.toStringAsFixed(1)}%',
+      style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: color),
     );
   }
 
-  Widget _buildChatResponseSection() {
-    final hasData = _chatResponseTime.isNotEmpty;
-    
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+  // ─────────────────────────────────────────────────────
+  // ④ 관리자 운영 지표
+  // ─────────────────────────────────────────────────────
+  Widget _buildAdminOperationSection() {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatTile(
+                '평균 승인\n소요 시간',
+                _avgApprovalHours > 0
+                    ? '${_avgApprovalHours.toStringAsFixed(1)}h'
+                    : '-',
+                valueColor: Colors.orange[700],
+                icon: Icons.timer_outlined,
+              ),
+              _verticalDivider(),
+              _buildStatTile(
+                '차단 유저 수',
+                '$_blockedUserCount명',
+                valueColor: Colors.red[600],
+                icon: Icons.block,
+              ),
+              _verticalDivider(),
+              _buildStatTile(
+                '가입 거절\n유저 수',
+                '$_rejectedUserCount명',
+                valueColor: Colors.grey[700],
+                icon: Icons.person_off,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange[200]!),
+            ),
+            child: Row(
               children: [
-                const Icon(Icons.chat, color: Color(0xFF0038A8)),
+                Icon(Icons.info_outline, color: Colors.orange[700], size: 18),
                 const SizedBox(width: 8),
-                const Text(
-                  '5. 커뮤니티 채팅 응답 속도',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                const Expanded(
+                  child: Text(
+                    '회원 승인은 수동으로 진행됩니다.\n관리자 승인 화면에서 개별 검토 후 승인/거절하세요.',
+                    style: TextStyle(fontSize: 12, color: Colors.black87),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            
-            if (!hasData)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text('채팅 응답 속도 데이터가 없습니다'),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            '평균 응답 시간',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${_chatResponseTime['average']!.toStringAsFixed(1)}분',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0038A8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.green[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.green[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            '중앙값',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${_chatResponseTime['median']!.toStringAsFixed(1)}분',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
