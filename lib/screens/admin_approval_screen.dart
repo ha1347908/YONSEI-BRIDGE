@@ -134,8 +134,10 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
           users.add({
             'user_id': userId,
             'name': prefs.getString('demo_name_$userId') ?? userId,
+            'nickname': prefs.getString('demo_nickname_$userId') ?? '',
             'nationality': prefs.getString('demo_nationality_$userId') ?? 'Unknown',
             'contact': prefs.getString('demo_contact_$userId') ?? 'N/A',
+            'password': prefs.getString('demo_password_$userId') ?? '(없음)',
             'status': status,
             'created_at': DateTime.now(),
             'id_photo_base64': photoBase64,
@@ -489,11 +491,14 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   }
 
   void _showUserDetails(Map<String, dynamic> user) {
+    bool _obscurePassword = true; // local state for password visibility
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         maxChildSize: 0.9,
         minChildSize: 0.5,
@@ -536,12 +541,87 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     _buildInfoSection('기본 정보', [
-                      _buildInfoRow('아이디', user['user_id']),
+                      _buildInfoRow('아이디 (이메일)', user['user_id']),
                       _buildInfoRow('이름', user['name']),
+                      if ((user['nickname'] ?? '').isNotEmpty)
+                        _buildInfoRow('닉네임', user['nickname']),
                       _buildInfoRow('국적', user['nationality']),
                       _buildInfoRow('연락처', user['contact']),
                       _buildInfoRow('신청일', _formatDate(user['created_at'])),
                     ]),
+                    const SizedBox(height: 16),
+                    // ── 비밀번호 섹션 ──
+                    if (user['password'] != null)
+                      _buildInfoSection('계정 보안', [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 80,
+                                child: Text(
+                                  '비밀번호',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _obscurePassword
+                                      ? '●' * (user['password'] as String).length
+                                      : user['password'],
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    letterSpacing: _obscurePassword ? 2 : 0,
+                                    fontFamily: _obscurePassword ? null : 'monospace',
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  color: const Color(0xFF0038A8),
+                                ),
+                                tooltip: _obscurePassword ? '비밀번호 보기' : '비밀번호 숨기기',
+                                onPressed: () {
+                                  setModalState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.lock_outline, color: Colors.orange, size: 16),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '관리자 전용 정보 — 외부에 절대 공유하지 마세요',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ]),
                     const SizedBox(height: 24),
                     if (user['id_photo_base64'] != null) ...[
                       _buildInfoSection('학생증 사진', [
@@ -641,6 +721,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
