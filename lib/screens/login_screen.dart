@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import 'home_screen.dart';
@@ -114,43 +113,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submitRecoveryRequest(String email) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Check if user exists
-      final storedUser = prefs.getString('demo_user_$email');
-      if (storedUser == null) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Account Not Found'),
-              content: const Text(
-                  'No account registered with that email address.'),
-              actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
-
-      // Save recovery request
-      final requestTime = DateTime.now().toIso8601String();
-      await prefs.setString('recovery_request_$email', requestTime);
-      await prefs.setString('recovery_status_$email', 'Pending');
-
-      // ── Admin notification: push into admin_recovery_notifications list ──
-      final notifKey = 'admin_recovery_notifications';
-      final existing = prefs.getStringList(notifKey) ?? [];
-      existing.insert(0,
-          '{"email":"$email","requestTime":"$requestTime","read":false}');
-      // Keep at most 50 notifications
-      if (existing.length > 50) existing.removeLast();
-      await prefs.setStringList(notifKey, existing);
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.submitRecoveryRequest(email);
 
       if (mounted) {
         showDialog(
@@ -159,8 +123,8 @@ class _LoginScreenState extends State<LoginScreen> {
             title: const Text('Recovery Request Submitted'),
             content: const Text(
               'Your account recovery request has been submitted.\n\n'
-              'An administrator will send a confirmation email to the registered '
-              'address and manually process your recovery request.\n\n'
+              'An administrator will review your request and manually '
+              'process your account recovery.\n\n'
               '⏰ Processing time: 1–2 business days\n\n'
               'Once approved, a temporary password will be sent to your registered email.',
             ),
@@ -179,10 +143,17 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Recovery request failed: $e'),
-            backgroundColor: Colors.red,
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Account Not Found'),
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
       }
@@ -190,271 +161,139 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
 
-      try {
-        final username = _usernameController.text.trim();
-        final password = _passwordController.text;
+    setState(() => _isLoading = true);
 
-        // Demo accounts (hardcoded for testing)
-        final demoAccounts = {
-          'welovejesus': {
-            'password': 'jesuslovesyou',
-            'name': 'System Administrator',
-            'status': 'Approved',
-            'role': 'Admin',
-            'permissions': 'full_admin',
-            'can_delete_account': true,
-          },
-          'bridge_master_haram': {
-            'password': 'ha321281020108!',
-            'name': 'Bridge Master Haram',
-            'status': 'Approved',
-            'role': 'Admin',
-            'permissions': 'full_admin',
-            'can_delete_account': false,
-          },
-          'bridge_master_jose': {
-            'password': 'jose2001!',
-            'name': 'Bridge Master Jose',
-            'status': 'Approved',
-            'role': 'Admin',
-            'permissions': 'full_admin',
-            'can_delete_account': false,
-          },
-          'manage_yb2026': {
-            'password': '2026manage_yb',
-            'name': 'YB Manager 2026',
-            'status': 'Approved',
-            'role': 'Admin',
-            'permissions': 'post_only',
-            'can_delete_account': false,
-          },
-          'testuser': {
-            'password': 'test123',
-            'name': 'Test User',
-            'status': 'Approved',
-            'role': 'User',
-            'permissions': 'user',
-            'can_delete_account': true,
-          },
-          'pending_user': {
-            'password': 'pending123',
-            'name': 'Pending User',
-            'status': 'Pending',
-            'role': 'User',
-            'permissions': 'user',
-            'can_delete_account': true,
-          },
-        };
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final storageService = Provider.of<StorageService>(context, listen: false);
+      final emailOrId = _usernameController.text.trim();
+      final password = _passwordController.text;
 
-        // Check if account exists
-        if (!demoAccounts.containsKey(username)) {
-          // Check local storage for custom registered users
-          final prefs = await SharedPreferences.getInstance();
-          final storedUser = prefs.getString('demo_user_$username');
-          final storedPassword = prefs.getString('demo_password_$username');
-          final storedStatus = prefs.getString('demo_status_$username');
-          final storedName = prefs.getString('demo_name_$username');
-          final storedNickname = prefs.getString('demo_nickname_$username');
+      await authService.loginWithEmailOrId(emailOrId, password, _rememberMe);
 
-          if (storedUser == null) {
-            throw Exception('User not found. Please sign up first.');
-          }
+      // Scope saved-posts to this user
+      storageService.setCurrentUser(authService.currentUserId);
 
-          if (storedPassword != password) {
-            throw Exception('Incorrect password');
-          }
+      setState(() => _isLoading = false);
 
-          // Check status for custom users
-          if (storedStatus == 'Pending') {
-            setState(() {
-              _isLoading = false;
-            });
-
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Approval Pending'),
-                  content: const Text(
-                    'Your account is awaiting administrator approval.\n\n'
-                    'Please wait 1–2 business days for approval.\n\n'
-                    'You will be notified once your account is approved.',
-                  ),
-                  actions: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return;
-          }
-
-          if (storedStatus == 'Blocked') {
-            final blockReason = prefs.getString('demo_block_reason_$username');
-            setState(() {
-              _isLoading = false;
-            });
-
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Account Blocked'),
-                  content: Text(
-                    'Your account has been blocked by the administrator.\n\n'
-                    'Reason: ${blockReason ?? "Not specified"}\n\n'
-                    'Please contact the administrator for more information.',
-                  ),
-                  actions: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return;
-          }
-
-          if (storedStatus == 'Rejected') {
-            final rejectionReason =
-                prefs.getString('demo_rejection_reason_$username');
-            setState(() {
-              _isLoading = false;
-            });
-
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Account Rejected'),
-                  content: Text(
-                    'Your account registration has been rejected.\n\n'
-                    'Reason: ${rejectionReason ?? "Not specified"}\n\n'
-                    'Please contact the administrator or register again with correct information.',
-                  ),
-                  actions: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return;
-          }
-
-          // Check if status is 'Approved' before allowing login
-          if (storedStatus != 'Approved') {
-            throw Exception(
-                'Account status: $storedStatus. Only approved accounts can login.');
-          }
-
-          // Custom user approved, login with nickname
-          final authService =
-              Provider.of<AuthService>(context, listen: false);
-          final storageServiceCustom =
-              Provider.of<StorageService>(context, listen: false);
-          await authService.login(
-            username,
-            storedNickname ?? storedName ?? username,
-            _rememberMe,
-            permission: 'user',
-            canDelete: true,
-          );
-          storageServiceCustom.setCurrentUser(username);
-        } else {
-          // Demo account
-          final account = demoAccounts[username]!;
-
-          // Verify password
-          if (account['password'] != password) {
-            throw Exception('Incorrect password');
-          }
-
-          // Check status
-          if (account['status'] == 'Pending') {
-            setState(() {
-              _isLoading = false;
-            });
-
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Approval Pending'),
-                  content: const Text(
-                    'Your account is awaiting administrator approval.\n\n'
-                    'Please wait 1–2 business days for approval.\n\n'
-                    'You will be notified once your account is approved.',
-                  ),
-                  actions: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return;
-          }
-
-          // User is approved, proceed with login
-          final authService =
-              Provider.of<AuthService>(context, listen: false);
-          final storageServiceDemo =
-              Provider.of<StorageService>(context, listen: false);
-          await authService.login(
-            username,
-            account['name'] as String,
-            _rememberMe,
-            permission: account['permissions'] as String?,
-            canDelete: account['can_delete_account'] as bool?,
-          );
-          storageServiceDemo.setCurrentUser(username);
-        }
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
-        }
-      } catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Login failed: $e'),
-              backgroundColor: Colors.red,
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
+    } on PendingApprovalException {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Approval Pending'),
+            content: const Text(
+              'Your account is awaiting administrator approval.\n\n'
+              'Please wait 1–2 business days for approval.',
             ),
-          );
-        }
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on BlockedException catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Account Blocked'),
+            content: Text(
+              'Your account has been blocked.\n\n'
+              'Reason: ${e.reason ?? "Not specified"}\n\n'
+              'Please contact the administrator.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on RejectedException catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Account Rejected'),
+            content: Text(
+              'Your registration was rejected.\n\n'
+              'Reason: ${e.reason ?? "Not specified"}\n\n'
+              'Please contact the administrator or register again.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Login Failed'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(msg),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: const Text(
+                    '💡 If you are a new user, please sign up first.\n'
+                    '💡 Admin accounts use their admin ID (not email).',
+                    style: TextStyle(fontSize: 12, height: 1.5),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0038A8),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
       }
     }
   }

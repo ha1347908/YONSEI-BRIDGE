@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import '../widgets/country_search_dropdown.dart';
 
@@ -231,41 +230,22 @@ For full details, please review our Privacy Policy in Settings.''';
   }
 
   Future<void> _submitSignup() async {
-    if (_formKey.currentState!.validate() &&
-        _selectedNationality != null &&
-        _studentIdImage != null) {
-      setState(() {
-        _isLoading = true;
-      });
+    // validate() 재호출 제거 — Privacy Consent 진입 전 이미 통과된 상태
+    setState(() => _isLoading = true);
 
-      try {
-        final String userId = _usernameController.text.trim();
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
 
-        await Future.delayed(const Duration(seconds: 1));
+      await authService.signUp(
+        email: _usernameController.text.trim(),
+        password: _passwordController.text,
+        name: _nameController.text.trim(),
+        nickname: _nicknameController.text.trim(),
+        nationality: _selectedNationality ?? 'Unknown',
+        contact: _contactController.text.trim(),
+      );
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('demo_user_$userId', userId);
-        await prefs.setString(
-            'demo_name_$userId', _nameController.text.trim());
-        await prefs.setString(
-            'demo_nickname_$userId', _nicknameController.text.trim());
-        await prefs.setString('demo_nationality_$userId',
-            _selectedNationality ?? 'Unknown');
-        await prefs.setString(
-            'demo_contact_$userId', _contactController.text.trim());
-        await prefs.setString(
-            'demo_password_$userId', _passwordController.text);
-        await prefs.setString('demo_status_$userId', 'Pending');
-
-        if (_studentIdImage != null) {
-          final bytes = await _studentIdImage!.readAsBytes();
-          final base64Image = base64Encode(bytes);
-          await prefs.setString('demo_photo_$userId', base64Image);
-        }
-
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
 
         if (mounted) {
           showDialog(
@@ -274,7 +254,7 @@ For full details, please review our Privacy Policy in Settings.''';
             builder: (context) => AlertDialog(
               title: const Text('Sign-Up Application Submitted'),
               content: const Text(
-                'You can log in once an administrator approves your account.\n\n'
+                'Your account has been created and is awaiting administrator approval.\n\n'
                 'Approval may take 1–2 business days.\n\n'
                 '⚠️ Your student ID photo will be automatically deleted upon approval or rejection.',
               ),
@@ -295,26 +275,16 @@ For full details, please review our Privacy Policy in Settings.''';
           );
         }
       } catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-
+        setState(() => _isLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Sign-up failed: $e'),
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
               backgroundColor: Colors.red,
             ),
           );
         }
       }
-    } else if (_studentIdImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('Please complete student ID verification')),
-      );
-    }
   }
 
   @override
@@ -661,16 +631,24 @@ For full details, please review our Privacy Policy in Settings.''';
                     onPressed: _isLoading
                         ? null
                         : () {
-                            if (_formKey.currentState!.validate() &&
-                                _studentIdImage != null) {
-                              _showPrivacyConsent();
-                            } else if (_studentIdImage == null) {
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(
+                            if (_studentIdImage == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                     content: Text(
                                         'Please complete student ID verification')),
                               );
+                              return;
+                            }
+                            if (_selectedNationality == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Please select your nationality')),
+                              );
+                              return;
+                            }
+                            if (_formKey.currentState!.validate()) {
+                              _showPrivacyConsent();
                             }
                           },
                     style: ElevatedButton.styleFrom(
