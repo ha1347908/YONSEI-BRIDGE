@@ -117,6 +117,13 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '저장된 게시물이 없습니다',
         'post_saved': '게시글이 저장되었습니다',
         'post_unsaved': '저장이 취소되었습니다',
+
+        // 자동번역 UI
+        'see_original': '원문 보기',
+        'see_translation': '번역 보기',
+        'translating': '번역 중...',
+        'translated_from': '번역됨',
+        'translation_unavailable': '번역을 불러올 수 없습니다',
         
         // Living Setup
         'living_setup_title': '당신의 한국 생활, \'검색\'하지 말고 \'리빙셋업\' 하세요!',
@@ -273,7 +280,14 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': 'No saved posts',
         'post_saved': 'Post saved',
         'post_unsaved': 'Post removed from saved',
-        
+
+        // Auto-translation UI
+        'see_original': 'See Original',
+        'see_translation': 'See Translation',
+        'translating': 'Translating...',
+        'translated_from': 'Translated',
+        'translation_unavailable': 'Translation unavailable',
+
         // Living Setup
         'living_setup_title': 'Don\'t Waste Time Searching—Let \'Living Setup\' Handle Your Life in Korea!',
         'living_setup_intro': 'Are you feeling overwhelmed and unsure of what to do from the moment you land in Korea until classes start? Yonsei-Bridge\'s Living Setup provides a "Survival Timeline" perfectly synced with your schedule.',
@@ -429,7 +443,14 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '暂无保存的帖子',
         'post_saved': '帖子已保存',
         'post_unsaved': '已取消保存',
-        
+
+        // 自动翻译 UI
+        'see_original': '查看原文',
+        'see_translation': '查看译文',
+        'translating': '翻译中...',
+        'translated_from': '已翻译',
+        'translation_unavailable': '无法加载翻译',
+
         // Living Setup
         'living_setup_title': '告别繁琐搜索，让\'Living Setup\'开启你的韩国生活！',
         'living_setup_intro': '从抵达韩国那一刻起直至开学，你是否正因为不知所措而感到茫然？延世桥（Yonsei-Bridge）的 Living Setup 为留学生量身定制了完美的"生存时间轴"。',
@@ -585,7 +606,14 @@ class LanguageService extends ChangeNotifier {
         'no_saved_posts': '保存した投稿がありません',
         'post_saved': '投稿を保存しました',
         'post_unsaved': '保存を解除しました',
-        
+
+        // 自動翻訳 UI
+        'see_original': '原文を見る',
+        'see_translation': '翻訳を見る',
+        'translating': '翻訳中...',
+        'translated_from': '翻訳済み',
+        'translation_unavailable': '翻訳を読み込めません',
+
         // Living Setup
         'living_setup_title': '韓国生活、検索はもう卒業！『リビングセットアップ』にお任せください！',
         'living_setup_intro': '韓国に到着した瞬間から開講まで、何をすべきか分からず不安ではありませんか？延世ブリッジ（Yonsei-Bridge）のリビングセットアップが、留学生のスケジュールにぴったり合わせた「生存タイムライン」をお届けします。',

@@ -47,6 +47,11 @@ class _FreeBoardScreenState extends State<FreeBoardScreen> {
           categoryId: 'free_board',
           isAdminPost: false,
           imageUrls: imageUrls,
+          originalTitle: postData['original_title'] as String?,
+          originalContent: postData['original_content'] as String?,
+          originalLanguage: postData['original_language'] as String?,
+          translations: _parseTranslations(postData['translations']),
+          isTranslated: postData['is_translated'] as bool? ?? false,
         );
       }).toList();
       // 최신순 정렬
@@ -58,6 +63,20 @@ class _FreeBoardScreenState extends State<FreeBoardScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
     }
+  }
+
+  /// SharedPreferences에서 읽은 raw translations 맵 파싱
+  static Map<String, Map<String, String>> _parseTranslations(dynamic raw) {
+    final result = <String, Map<String, String>>{};
+    if (raw is Map) {
+      raw.forEach((lang, val) {
+        if (val is Map) {
+          result[lang.toString()] =
+              val.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+      });
+    }
+    return result;
   }
 
   @override

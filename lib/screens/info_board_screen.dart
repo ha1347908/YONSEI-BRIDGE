@@ -72,6 +72,11 @@ class _InfoBoardScreenState extends State<InfoBoardScreen>
           isAdminPost: true,
           imageUrls: imgs,
           infoCategory: InfoCategoryExt.fromId(d['info_category'] as String?),
+          originalTitle: d['original_title'] as String?,
+          originalContent: d['original_content'] as String?,
+          originalLanguage: d['original_language'] as String?,
+          translations: _parseTranslations(d['translations']),
+          isTranslated: d['is_translated'] as bool? ?? false,
         );
       }).toList();
 
@@ -82,6 +87,19 @@ class _InfoBoardScreenState extends State<InfoBoardScreen>
     } catch (_) {
       setState(() => _isLoading = false);
     }
+  }
+
+  static Map<String, Map<String, String>> _parseTranslations(dynamic raw) {
+    final result = <String, Map<String, String>>{};
+    if (raw is Map) {
+      raw.forEach((lang, val) {
+        if (val is Map) {
+          result[lang.toString()] =
+              val.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+      });
+    }
+    return result;
   }
 
   // ── 현재 탭 카테고리의 게시글만 필터 ──────────────────────────

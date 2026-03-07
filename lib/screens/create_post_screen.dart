@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/translation_service.dart';
 import '../models/post_model.dart';
 
 class CreatePostScreen extends StatefulWidget {
@@ -124,6 +125,25 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           jsonDecode(prefs.getString(postsKey) ?? '[]') as List<dynamic>;
       existing.insert(0, postData);
       await prefs.setString(postsKey, jsonEncode(existing));
+
+      // ── 백그라운드 자동번역 트리거 ────────────────────────
+      final tempPost = Post(
+        id: postId,
+        title: _titleController.text.trim(),
+        content: _contentController.text.trim(),
+        author: userName,
+        authorId: userId,
+        createdAt: DateTime.now(),
+        categoryId: widget.categoryId,
+        isAdminPost: widget.categoryId == 'info_board',
+        infoCategory: _isInfoBoard ? _selectedInfoCategory : null,
+      );
+      // 의도적 fire-and-forget (UI를 블록하지 않고 백그라운드 번역)
+      TranslationService.translatePostAndCache(
+        post: tempPost,
+        prefs: prefs,
+        postsKey: postsKey,
+      );
 
       setState(() => _isLoading = false);
 
