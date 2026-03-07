@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -236,6 +237,17 @@ For full details, please review our Privacy Policy in Settings.''';
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
 
+      // 사진을 base64로 인코딩
+      String? photoBase64;
+      if (_studentIdImage != null) {
+        try {
+          final bytes = await _studentIdImage!.readAsBytes();
+          photoBase64 = base64Encode(bytes);
+        } catch (e) {
+          debugPrint('Photo encoding error: $e');
+        }
+      }
+
       await authService.signUp(
         email: _usernameController.text.trim(),
         password: _passwordController.text,
@@ -243,6 +255,7 @@ For full details, please review our Privacy Policy in Settings.''';
         nickname: _nicknameController.text.trim(),
         nationality: _selectedNationality ?? 'Unknown',
         contact: _contactController.text.trim(),
+        idPhotoBase64: photoBase64,
       );
 
         setState(() => _isLoading = false);

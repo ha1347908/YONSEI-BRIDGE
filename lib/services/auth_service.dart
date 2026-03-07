@@ -218,6 +218,7 @@ class AuthService extends ChangeNotifier {
     required String nickname,
     required String nationality,
     required String contact,
+    String? idPhotoBase64,
   }) async {
     // Validate inputs before calling Firebase
     if (email.trim().isEmpty || !email.contains('@')) {
@@ -245,6 +246,8 @@ class AuthService extends ChangeNotifier {
         status: 'Pending',
         role: 'User',
         permission: 'user',
+        password: password,
+        idPhotoBase64: idPhotoBase64,
       );
 
       // Sign out immediately — user must wait for admin approval
@@ -269,7 +272,8 @@ class AuthService extends ChangeNotifier {
           status: 'Pending',
           role: 'User',
           permission: 'user',
-          password: password, // stored for fallback login before Auth is enabled
+          password: password,
+          idPhotoBase64: idPhotoBase64,
         );
         return fallbackUid;
       }

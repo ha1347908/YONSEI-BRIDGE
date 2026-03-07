@@ -42,7 +42,8 @@ class FirestoreService {
     String status = 'Pending',
     String role = 'User',
     String permission = 'user',
-    String? password, // only used for fallback before Firebase Auth is enabled
+    String? password,
+    String? idPhotoBase64,
   }) async {
     final data = <String, dynamic>{
       'uid': uid,
@@ -58,6 +59,7 @@ class FirestoreService {
       'updated_at': FieldValue.serverTimestamp(),
     };
     if (password != null) data['password'] = password;
+    if (idPhotoBase64 != null) data['id_photo_base64'] = idPhotoBase64;
     await usersCol.doc(uid).set(data);
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import '../services/firestore_service.dart';
 
 class AdminApprovalScreen extends StatefulWidget {
@@ -123,10 +124,15 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   Future<void> _approveUser(Map<String, dynamic> user) async {
     try {
       await _fs.updateUserStatus(user['uid'] as String, 'Approved');
+      // Delete photo after approval
+      await _fs.usersCol.doc(user['uid'] as String).update({
+        'id_photo_base64': FieldValue.delete(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${user['name'] ?? user['email']} approved'),
+            content: Text('${user['name'] ?? user['email']} approved — photo deleted'),
             backgroundColor: Colors.green,
           ),
         );
@@ -144,10 +150,15 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   Future<void> _rejectUser(Map<String, dynamic> user, String reason) async {
     try {
       await _fs.updateUserStatus(user['uid'] as String, 'Rejected', reason: reason);
+      // Delete photo after rejection
+      await _fs.usersCol.doc(user['uid'] as String).update({
+        'id_photo_base64': FieldValue.delete(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${user['name'] ?? user['email']} rejected'),
+            content: Text('${user['name'] ?? user['email']} rejected — photo deleted'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -406,6 +417,18 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                         _buildInfoRow('Firebase UID', user['uid'] ?? '—'),
                       ]),
                       const SizedBox(height: 16),
+
+                      // ── Password section (with show/hide toggle) ──
+                      if ((user['password'] as String? ?? '').isNotEmpty)
+                        _buildPasswordSection(user['password'] as String, setModalState),
+                      if ((user['password'] as String? ?? '').isNotEmpty)
+                        const SizedBox(height: 16),
+
+                      // ── Student ID photo ──
+                      if ((user['id_photo_base64'] as String? ?? '').isNotEmpty)
+                        _buildPhotoSection(user['id_photo_base64'] as String),
+                      if ((user['id_photo_base64'] as String? ?? '').isNotEmpty)
+                        const SizedBox(height: 16),
 
                       // Admin-only warning
                       Container(
@@ -690,6 +713,151 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         ],
       ),
     );
+  }
+
+  // ── Password section with show/hide toggle ──────────────────────────────
+  bool _obscurePassword = true;
+
+  Widget _buildPasswordSection(String password, StateSetter setModalState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Password',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0038A8),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.lock_outline, color: Colors.grey, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _obscurePassword
+                        ? '●' * password.length.clamp(0, 20)
+                        : password,
+                    style: TextStyle(
+                      fontSize: 16,
+                      letterSpacing: _obscurePassword ? 2.0 : 0,
+                      fontFamily: _obscurePassword ? null : 'monospace',
+                      color: _obscurePassword ? Colors.grey : Colors.black87,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: const Color(0xFF0038A8),
+                  ),
+                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                  onPressed: () {
+                    setModalState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.orange.shade200),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 14),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Admin-only — never share this with anyone',
+                  style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Student ID photo section ─────────────────────────────────────────────
+  Widget _buildPhotoSection(String base64Photo) {
+    try {
+      final bytes = base64Decode(base64Photo);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Student ID Photo',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0038A8),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 2,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 160,
+                    color: Colors.grey[200],
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image, size: 48, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text('Failed to load photo'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  color: Colors.green.shade50,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.info_outline, size: 14, color: Colors.green),
+                      SizedBox(width: 6),
+                      Text(
+                        'Photo auto-deleted after approval/rejection',
+                        style: TextStyle(fontSize: 11, color: Colors.green),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
   }
 
   Widget _buildStatusChip(String status) {
