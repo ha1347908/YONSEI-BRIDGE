@@ -12,8 +12,7 @@ class SpeechController {
   void Function(String)? _onError;
   void Function()? _onEnd;
 
-  // ★ 핵심: stop()이 명시적으로 호출됐는지 추적
-  //    true면 onend/onerror에서 콜백 완전 차단
+  // stop()이 명시적으로 호출됐는지 추적
   bool _stoppedByUser = false;
   bool _isListening = false;
 
@@ -49,26 +48,43 @@ class SpeechController {
 
     _recognition = js.JsObject(js.context[ctorName] as js.JsFunction);
     _recognition!['lang'] = lang;
-    _recognition!['continuous'] = false;
-    _recognition!['interimResults'] = true;
+    _recognition!['continuous'] = true;      // ★ 연속 인식 (끊기지 않음)
+    _recognition!['interimResults'] = true;  // ★ 중간 결과도 즉시 반환
     _recognition!['maxAlternatives'] = 1;
 
-    // onresult
+    // onresult: interim(중간) 결과는 _onPartial, final 결과는 _onResult
     _recognition!['onresult'] = js.allowInterop((dynamic event) {
       if (_stoppedByUser) return;
       try {
         final results = event['results'] as js.JsObject;
         final length = results['length'] as int;
         if (length == 0) return;
-        final last = results.callMethod('item', [length - 1]) as js.JsObject;
-        final isFinal = last['isFinal'] as bool;
-        final alt = last.callMethod('item', [0]) as js.JsObject;
-        final transcript = (alt['transcript'] as String).trim();
-        if (transcript.isEmpty) return;
-        if (isFinal) {
-          _onResult?.call(transcript);
-        } else {
-          _onPartial?.call(transcript);
+
+        // 모든 결과를 순회하여 interim + final 모두 처리
+        String interimTranscript = '';
+        String finalTranscript = '';
+
+        for (int i = 0; i < length; i++) {
+          final result = results.callMethod('item', [i]) as js.JsObject;
+          final isFinal = result['isFinal'] as bool;
+          final alt = result.callMethod('item', [0]) as js.JsObject;
+          final transcript = (alt['transcript'] as String).trim();
+          if (transcript.isEmpty) continue;
+
+          if (isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // interim 결과 즉시 전달 (실시간 표시 + 번역용)
+        if (interimTranscript.isNotEmpty) {
+          _onPartial?.call(interimTranscript);
+        }
+        // final 결과 전달
+        if (finalTranscript.isNotEmpty) {
+          _onResult?.call(finalTranscript);
         }
       } catch (e) {
         if (kDebugMode) debugPrint('[STT-Web] onresult error: $e');
@@ -77,19 +93,19 @@ class SpeechController {
 
     // onerror
     _recognition!['onerror'] = js.allowInterop((dynamic event) {
-      if (_stoppedByUser) return; // ★ 사용자가 중지한 경우 완전 무시
+      if (_stoppedByUser) return;
       final err = event['error']?.toString() ?? 'unknown';
       if (kDebugMode) debugPrint('[STT-Web] onerror: $err');
       _isListening = false;
       _onError?.call(err);
     });
 
-    // onend
+    // onend: continuous=true면 에러 없이는 거의 발화 안 됨
     _recognition!['onend'] = js.allowInterop((_) {
-      if (_stoppedByUser) return; // ★ 사용자가 중지한 경우 완전 무시
+      if (_stoppedByUser) return;
       if (kDebugMode) debugPrint('[STT-Web] onend (natural)');
       _isListening = false;
-      _onEnd?.call(); // 자연 종료일 때만 상위에 알림
+      _onEnd?.call();
     });
 
     try {
@@ -103,7 +119,7 @@ class SpeechController {
 
   /// 사용자가 명시적으로 중지 (onend/onerror 콜백 차단)
   Future<void> stop() async {
-    _stoppedByUser = true; // ★ 먼저 플래그 설정
+    _stoppedByUser = true; // 먼저 플래그 설정
     _isListening = false;
     _cleanupRecognition();
   }
@@ -111,7 +127,6 @@ class SpeechController {
   void _cleanupRecognition() {
     if (_recognition != null) {
       try {
-        // 이벤트 핸들러 제거 후 stop
         _recognition!['onresult'] = null;
         _recognition!['onerror'] = null;
         _recognition!['onend'] = null;

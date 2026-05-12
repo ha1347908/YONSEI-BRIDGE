@@ -12,9 +12,9 @@ import 'bridge_live_web.dart'
 
 // ──────────────────────────────────────────────────────────────
 // Bridge Live 화면
-//   - 웹(Safari/Chrome): Web Speech API (webkitSpeechRecognition)
+//   - 웹(Safari/Chrome): Web Speech API (continuous=true, interimResults=true)
 //   - 안드로이드/iOS 앱: speech_to_text 패키지
-//   - 한국어 인식 → 사용자 언어 실시간 번역
+//   - 한국어 인식 → 사용자 언어 실시간 번역 (partial 즉시 번역)
 // ──────────────────────────────────────────────────────────────
 class BridgeLiveScreen extends StatefulWidget {
   const BridgeLiveScreen({super.key});
@@ -31,13 +31,19 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   bool _speechAvailable = false;
   String _initError = '';
 
-  String _recognizedText = '';
+  // 인식된 텍스트 (최종 누적)
+  String _finalText = '';
+  // 현재 인식 중인 중간 텍스트
+  String _interimText = '';
+  // 번역된 텍스트 (실시간 업데이트)
   String _translatedText = '';
-  String _currentWords = '';
 
   bool _shouldKeepListening = false;
 
-  // Web Speech API controller (웹 전용)
+  // 번역 디바운스 타이머 (연속 partial에서 중복 API 호출 방지)
+  Timer? _translateTimer;
+  String _lastTranslatedSource = ''; // 마지막으로 번역한 원문 (중복 방지)
+
   speech_impl.SpeechController? _webController;
 
   @override
@@ -50,6 +56,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _translateTimer?.cancel();
     _shouldKeepListening = false;
     _webController?.stop();
     super.dispose();
@@ -73,7 +80,6 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
       _initError = '';
       _speechAvailable = false;
     });
-
     try {
       _webController = speech_impl.SpeechController();
       final available = await _webController!.initialize(
@@ -99,27 +105,48 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   }
 
   // ── 결과 콜백 ────────────────────────────────────────────────
+
+  /// 중간(interim) 인식 결과 → 화면에 즉시 표시 + 디바운스 번역
   void _onPartial(String text) {
     if (!mounted) return;
-    setState(() => _currentWords = text);
+    setState(() => _interimText = text);
+
+    // 디바운스: 300ms 내 새 partial이 오면 이전 번역 취소
+    _translateTimer?.cancel();
+    if (text.trim().length < 2) return; // 너무 짧으면 번역 스킵
+    _translateTimer = Timer(const Duration(milliseconds: 300), () {
+      final combined = (_finalText + ' ' + text).trim();
+      if (combined != _lastTranslatedSource) {
+        _lastTranslatedSource = combined;
+        _translateText(combined, isPartial: true);
+      }
+    });
   }
 
+  /// 최종(final) 인식 결과 → 누적 저장 + 즉시 번역
   void _onResult(String text) {
     if (!mounted || text.trim().isEmpty) return;
+    _translateTimer?.cancel();
+    final newFinal = (_finalText.isEmpty ? '' : '$_finalText ') + text;
     setState(() {
-      _recognizedText = text;
-      _currentWords = '';
+      _finalText = newFinal;
+      _interimText = '';
     });
-    _translateText(text);
+    // 최종 확정 텍스트로 즉시 번역 (중복 방지)
+    if (newFinal != _lastTranslatedSource) {
+      _lastTranslatedSource = newFinal;
+      _translateText(newFinal, isPartial: false);
+    }
   }
 
   void _onError(String error) {
     if (!mounted) return;
     if (kDebugMode) debugPrint('BridgeLive error: $error');
     setState(() => _isListening = false);
-    // no-speech 나 network 에러는 재시작
     if (_shouldKeepListening &&
-        (error.contains('no-speech') || error.contains('network') || error.contains('aborted'))) {
+        (error.contains('no-speech') ||
+            error.contains('network') ||
+            error.contains('aborted'))) {
       Future.delayed(const Duration(milliseconds: 400), () {
         if (_shouldKeepListening && mounted) _doListen();
       });
@@ -129,6 +156,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   void _onEnd() {
     if (!mounted) return;
     setState(() => _isListening = false);
+    // continuous=true에서 onend는 에러 후에만 오므로 바로 재시작
     if (_shouldKeepListening) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (_shouldKeepListening && mounted) _doListen();
@@ -147,46 +175,62 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     if (!mounted || !_shouldKeepListening) return;
     setState(() {
       _isListening = true;
-      _currentWords = '';
+      _interimText = '';
     });
     await _webController?.listen(lang: 'ko-KR');
   }
 
   Future<void> _stopListening() async {
+    _translateTimer?.cancel();
     _shouldKeepListening = false;
     await _webController?.stop();
     if (mounted) {
       setState(() {
         _isListening = false;
-        _currentWords = '';
+        _interimText = '';
       });
     }
   }
 
   // ── 번역 ────────────────────────────────────────────────────
-  Future<void> _translateText(String text) async {
+  Future<void> _translateText(String text, {bool isPartial = false}) async {
+    if (!mounted || text.trim().isEmpty) return;
     final lang = Provider.of<LanguageService>(context, listen: false);
     final target = lang.currentLanguage;
+
+    // 한국어 설정이면 번역 없이 바로 표시
     if (target == 'ko') {
       if (mounted) setState(() => _translatedText = text);
       return;
     }
-    if (mounted) setState(() => _isTranslating = true);
+
+    // partial은 _isTranslating 스피너 없이 조용히 번역 (UI 안 튀게)
+    if (!isPartial && mounted) setState(() => _isTranslating = true);
+
     try {
       final result = await TranslationService.translate(
-        text: text, targetLang: target, sourceLang: 'ko',
+        text: text,
+        targetLang: target,
+        sourceLang: 'ko',
       );
-      if (mounted) setState(() { _translatedText = result; _isTranslating = false; });
+      if (mounted) {
+        setState(() {
+          _translatedText = result;
+          _isTranslating = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _translatedText = text; _isTranslating = false; });
+      if (mounted) setState(() => _isTranslating = false);
     }
   }
 
   void _clearResults() {
+    _translateTimer?.cancel();
+    _lastTranslatedSource = '';
     setState(() {
-      _recognizedText = '';
+      _finalText = '';
       _translatedText = '';
-      _currentWords = '';
+      _interimText = '';
     });
   }
 
@@ -211,7 +255,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
         ]),
         elevation: 0,
         actions: [
-          if (_recognizedText.isNotEmpty || _translatedText.isNotEmpty)
+          if (_finalText.isNotEmpty || _translatedText.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.white54),
               onPressed: _clearResults,
@@ -243,7 +287,8 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   Widget _buildUnavailableView() => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          child:
+              Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.hearing_disabled, size: 72, color: Colors.orange),
             const SizedBox(height: 24),
             const Text('음성 인식 초기화 실패',
@@ -256,8 +301,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
             const Text(
               '브라우저의 마이크 권한을 허용하거나\n다시 시도해주세요.',
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(color: Colors.white60, fontSize: 14, height: 1.6),
+              style: TextStyle(color: Colors.white60, fontSize: 14, height: 1.6),
             ),
             if (_initError.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -295,15 +339,22 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   Widget _buildMainView(LanguageService lang) {
     final targetLangName = _getLangName(lang.currentLanguage);
     final isKorean = lang.currentLanguage == 'ko';
+
+    // 화면에 표시할 "현재 인식 중" 텍스트 (final + interim 합산)
+    final displayInterim = _interimText;
+    final hasContent = _finalText.isNotEmpty ||
+        _translatedText.isNotEmpty ||
+        displayInterim.isNotEmpty;
+
     return Column(children: [
-      // 배너
+      // 안내 배너
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
-          border:
-              Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+          border: Border(
+              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
         ),
         child: Row(children: [
           const Icon(Icons.translate, color: Color(0xFF4ECDC4), size: 18),
@@ -318,23 +369,46 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
           ),
         ]),
       ),
-      // 결과
+
+      // 결과 영역
       Expanded(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (_isListening && _currentWords.isNotEmpty)
-              _buildCard(label: '인식 중...', text: _currentWords, isLive: true, labelColor: const Color(0xFF4ECDC4)),
-            if (_recognizedText.isNotEmpty) ...[
-              _buildCard(label: '인식된 한국어', text: _recognizedText, icon: Icons.record_voice_over, labelColor: Colors.white70),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // ① 번역 결과 (가장 크게, 최상단)
+            if (_translatedText.isNotEmpty && !isKorean) ...[
+              _buildTranslationCard(
+                label: targetLangName,
+                text: _translatedText,
+                isTranslating: _isTranslating,
+              ),
               const SizedBox(height: 16),
             ],
-            if (_isTranslating)
-              _buildCard(label: '번역 중...', text: '...', isLive: true, labelColor: const Color(0xFFFFD93D))
-            else if (_translatedText.isNotEmpty && !isKorean)
-              _buildCard(label: targetLangName, text: _translatedText, icon: Icons.translate, labelColor: const Color(0xFFFFD93D), isHighlighted: true),
-            if (_recognizedText.isEmpty && _translatedText.isEmpty && (!_isListening || _currentWords.isEmpty))
-              _buildGuide(),
+
+            // ② 인식 중인 한국어 (실시간)
+            if (_isListening && displayInterim.isNotEmpty) ...[
+              _buildCard(
+                label: '인식 중...',
+                text: displayInterim,
+                isLive: true,
+                labelColor: const Color(0xFF4ECDC4),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ③ 최종 확정된 한국어 원문
+            if (_finalText.isNotEmpty)
+              _buildCard(
+                label: '인식된 한국어',
+                text: _finalText,
+                icon: Icons.record_voice_over,
+                labelColor: Colors.white54,
+                dimmed: true,
+              ),
+
+            // 아무것도 없을 때 가이드
+            if (!hasContent) _buildGuide(),
           ]),
         ),
       ),
@@ -342,22 +416,84 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     ]);
   }
 
+  Widget _buildTranslationCard({
+    required String label,
+    required String text,
+    bool isTranslating = false,
+  }) =>
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1F40),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFFFD93D).withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFD93D).withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.translate, size: 14, color: Color(0xFFFFD93D)),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFFFD93D),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5)),
+            if (isTranslating) ...[
+              const SizedBox(width: 8),
+              const SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: Color(0xFFFFD93D),
+                ),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 12),
+          Text(text,
+              style: const TextStyle(
+                  fontSize: 22,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5)),
+        ]),
+      );
+
   Widget _buildGuide() => Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 60),
           child: Column(children: [
             Container(
-              width: 100, height: 100,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: const Color(0xFF4ECDC4).withValues(alpha: 0.1),
-                border: Border.all(color: const Color(0xFF4ECDC4).withValues(alpha: 0.3), width: 2),
+                border: Border.all(
+                    color: const Color(0xFF4ECDC4).withValues(alpha: 0.3),
+                    width: 2),
               ),
-              child: const Icon(Icons.mic, size: 48, color: Color(0xFF4ECDC4)),
+              child:
+                  const Icon(Icons.mic, size: 48, color: Color(0xFF4ECDC4)),
             ),
             const SizedBox(height: 24),
             const Text('아래 버튼을 눌러 시작하세요',
-                style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w500)),
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             const Text('한국어로 말하면 자동으로 번역됩니다',
                 style: TextStyle(color: Colors.white38, fontSize: 13)),
@@ -369,40 +505,47 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     required String label,
     required String text,
     bool isLive = false,
-    bool isHighlighted = false,
+    bool dimmed = false,
     IconData? icon,
     Color labelColor = Colors.white70,
   }) =>
       Container(
         width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isHighlighted ? const Color(0xFF1A1F40) : Colors.white.withValues(alpha: 0.05),
+          color: Colors.white.withValues(alpha: dimmed ? 0.03 : 0.07),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isHighlighted
-                ? const Color(0xFFFFD93D).withValues(alpha: 0.4)
-                : isLive
-                    ? const Color(0xFF4ECDC4).withValues(alpha: 0.4)
-                    : Colors.white.withValues(alpha: 0.1),
-            width: isHighlighted || isLive ? 1.5 : 1,
+            color: isLive
+                ? const Color(0xFF4ECDC4).withValues(alpha: 0.4)
+                : Colors.white.withValues(alpha: 0.08),
+            width: isLive ? 1.5 : 1,
           ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            if (icon != null) ...[Icon(icon, size: 14, color: labelColor), const SizedBox(width: 6)]
-            else if (isLive) ...[_LiveDot(), const SizedBox(width: 6)],
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: labelColor),
+              const SizedBox(width: 6)
+            ] else if (isLive) ...[
+              _LiveDot(),
+              const SizedBox(width: 6)
+            ],
             Text(label,
                 style: TextStyle(
-                    fontSize: 12, color: labelColor, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                    fontSize: 12,
+                    color: labelColor,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5)),
           ]),
           const SizedBox(height: 10),
           Text(text,
               style: TextStyle(
-                  fontSize: isHighlighted ? 20 : 16,
-                  color: isHighlighted ? Colors.white : Colors.white.withValues(alpha: 0.85),
-                  fontWeight: isHighlighted ? FontWeight.w600 : FontWeight.normal,
+                  fontSize: isLive ? 17 : 15,
+                  color: dimmed
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : Colors.white.withValues(alpha: 0.85),
                   height: 1.5)),
         ]),
       );
@@ -411,27 +554,40 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
-          border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+          border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(
-            _isListening ? '음성 인식 중... 말씀해주세요' : _shouldKeepListening ? '재시작 중...' : '마이크 버튼을 눌러 시작',
+            _isListening ? '듣고 있어요 — 한국어로 말씀해 주세요' : '마이크 버튼을 눌러 시작',
             style: TextStyle(
-                color: _isListening ? const Color(0xFF4ECDC4) : Colors.white38,
-                fontSize: 13, fontWeight: FontWeight.w500),
+                color:
+                    _isListening ? const Color(0xFF4ECDC4) : Colors.white38,
+                fontSize: 13,
+                fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 16),
           GestureDetector(
             onTap: _isListening ? _stopListening : _startListening,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: 72, height: 72,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _isListening ? const Color(0xFF4ECDC4) : const Color(0xFF4ECDC4).withValues(alpha: 0.15),
-                border: Border.all(color: const Color(0xFF4ECDC4), width: 2),
+                color: _isListening
+                    ? const Color(0xFF4ECDC4)
+                    : const Color(0xFF4ECDC4).withValues(alpha: 0.15),
+                border:
+                    Border.all(color: const Color(0xFF4ECDC4), width: 2),
                 boxShadow: _isListening
-                    ? [BoxShadow(color: const Color(0xFF4ECDC4).withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 4)]
+                    ? [
+                        BoxShadow(
+                            color: const Color(0xFF4ECDC4)
+                                .withValues(alpha: 0.4),
+                            blurRadius: 20,
+                            spreadRadius: 4)
+                      ]
                     : null,
               ),
               child: Icon(
@@ -446,16 +602,21 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
 
   String _getLangName(String code) {
     switch (code) {
-      case 'ko': return '한국어';
-      case 'en': return 'English';
-      case 'zh': return '中文';
-      case 'ja': return '日本語';
-      default: return code;
+      case 'ko':
+        return '한국어';
+      case 'en':
+        return 'English';
+      case 'zh':
+        return '中文';
+      case 'ja':
+        return '日本語';
+      default:
+        return code;
     }
   }
 }
 
-// ── 깜박이는 라이브 점 ──────────────────────────────────────────
+// ── 깜박이는 라이브 점 ───────────────────────────────────────────
 class _LiveDot extends StatefulWidget {
   @override
   State<_LiveDot> createState() => _LiveDotState();
@@ -468,20 +629,26 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700))
       ..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.3, end: 1.0).animate(_ctrl);
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => FadeTransition(
         opacity: _anim,
         child: Container(
-          width: 8, height: 8,
-          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4ECDC4)),
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+              shape: BoxShape.circle, color: Color(0xFF4ECDC4)),
         ),
       );
 }
