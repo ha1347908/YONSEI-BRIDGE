@@ -30,6 +30,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   bool _isTranslating = false;
   bool _micPermissionDenied = false;
   bool _isInitializing = true;
+  String _initError = '';
 
   // 인식된 원문 (한국어)
   String _recognizedText = '';
@@ -73,13 +74,18 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   // ── 초기화 ────────────────────────────────────────────────────
   Future<void> _initSpeech() async {
     if (!mounted) return;
-    setState(() => _isInitializing = true);
+    setState(() {
+      _isInitializing = true;
+      _initError = '';
+      _micPermissionDenied = false;
+      _speechAvailable = false;
+    });
 
-    // 마이크 권한 확인 및 요청
-    final status = await Permission.microphone.request();
-    if (!mounted) return;
-
-    if (status.isDenied || status.isPermanentlyDenied) {
+    // 1단계: permission_handler로 마이크 권한 상태만 확인
+    //        (speech_to_text가 자체 요청하므로 여기서는 조회만)
+    final permStatus = await Permission.microphone.status;
+    if (permStatus.isPermanentlyDenied) {
+      if (!mounted) return;
       setState(() {
         _micPermissionDenied = true;
         _isInitializing = false;
@@ -87,24 +93,60 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
       return;
     }
 
-    // speech_to_text 초기화
+    // 2단계: speech_to_text 초기화 (내부에서 권한 요청 포함)
+    //        debugLogging: true 로 초기화 실패 원인 파악
     try {
       final available = await _speech.initialize(
         onStatus: _onSpeechStatus,
         onError: _onSpeechError,
+        debugLogging: kDebugMode,
+        finalTimeout: const Duration(milliseconds: 2000),
       );
-      if (mounted) {
+
+      if (kDebugMode) debugPrint('BridgeLive init result: $available');
+
+      if (!mounted) return;
+
+      if (!available) {
+        // 초기화 실패 → 1회 재시도 (일부 기기에서 첫 번째는 false 반환)
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (!mounted) return;
+
+        final retry = await _speech.initialize(
+          onStatus: _onSpeechStatus,
+          onError: _onSpeechError,
+          debugLogging: kDebugMode,
+        );
+
+        if (kDebugMode) debugPrint('BridgeLive retry result: $retry');
+        if (!mounted) return;
         setState(() {
-          _speechAvailable = available;
+          _speechAvailable = retry;
           _isInitializing = false;
+          _initError = retry ? '' : 'speech_to_text initialize() returned false';
         });
+        return;
       }
+
+      setState(() {
+        _speechAvailable = true;
+        _isInitializing = false;
+      });
     } catch (e) {
       if (kDebugMode) debugPrint('BridgeLive: speech init error: $e');
-      if (mounted) {
+      if (!mounted) return;
+      // permission denied 관련 에러인지 체크
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('permission') || errStr.contains('denied')) {
+        setState(() {
+          _micPermissionDenied = true;
+          _isInitializing = false;
+        });
+      } else {
         setState(() {
           _speechAvailable = false;
           _isInitializing = false;
+          _initError = e.toString();
         });
       }
     }
@@ -119,6 +161,11 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
 
   Future<void> _doListen() async {
     if (!_shouldKeepListening || !mounted) return;
+    if (!_speech.isAvailable) {
+      // 혹시 사용 불가 상태면 재초기화
+      await _initSpeech();
+      if (!_speechAvailable) return;
+    }
     setState(() {
       _isListening = true;
       _currentWords = '';
@@ -164,9 +211,8 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     if (kDebugMode) debugPrint('BridgeLive status: $status');
     // 인식 완료/대기 상태가 되면 자동으로 재시작 (지속 청취)
     if ((status == 'done' || status == 'notListening') && _shouldKeepListening) {
-      setState(() => _isListening = false);
-      // 약간의 딜레이 후 재시작
-      Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) setState(() => _isListening = false);
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (_shouldKeepListening && mounted) {
           _doListen();
         }
@@ -176,10 +222,22 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
 
   void _onSpeechError(SpeechRecognitionError error) {
     if (!mounted) return;
-    if (kDebugMode) debugPrint('BridgeLive error: ${error.errorMsg}');
-    // 에러 후에도 지속 청취 중이면 재시작
+    if (kDebugMode) debugPrint('BridgeLive error: ${error.errorMsg} / permanent: ${error.permanent}');
+
+    // permanent 에러면 재초기화 필요
+    if (error.permanent) {
+      _shouldKeepListening = false;
+      setState(() {
+        _isListening = false;
+        _speechAvailable = false;
+        _initError = error.errorMsg;
+      });
+      return;
+    }
+
+    // 일시적 에러면 재시작
     if (_shouldKeepListening) {
-      setState(() => _isListening = false);
+      if (mounted) setState(() => _isListening = false);
       Future.delayed(const Duration(seconds: 1), () {
         if (_shouldKeepListening && mounted) {
           _doListen();
@@ -265,7 +323,6 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
         ),
         elevation: 0,
         actions: [
-          // 지우기 버튼
           if (_recognizedText.isNotEmpty || _translatedText.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.white54),
@@ -293,10 +350,15 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircularProgressIndicator(color: Color(0xFF4ECDC4)),
-          SizedBox(height: 16),
+          SizedBox(height: 20),
           Text(
             '마이크 초기화 중...',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: Colors.white70, fontSize: 15),
+          ),
+          SizedBox(height: 8),
+          Text(
+            '처음 실행 시 권한 요청이 나타날 수 있습니다',
+            style: TextStyle(color: Colors.white38, fontSize: 12),
           ),
         ],
       ),
@@ -323,7 +385,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
             ),
             const SizedBox(height: 12),
             const Text(
-              'Bridge Live를 사용하려면\n마이크 접근 권한을 허용해주세요.',
+              'Bridge Live를 사용하려면\n마이크 접근 권한을 허용해주세요.\n\n설정 > 앱 > YONSEI BRIDGE > 권한',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white60, fontSize: 14, height: 1.6),
             ),
@@ -351,16 +413,16 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
 
   // ── 음성인식 불가 뷰 ──────────────────────────────────────────
   Widget _buildUnavailableView() {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.hearing_disabled, size: 80, color: Colors.orange),
-            SizedBox(height: 24),
-            Text(
-              '음성 인식을 사용할 수 없습니다',
+            const Icon(Icons.hearing_disabled, size: 72, color: Colors.orange),
+            const SizedBox(height: 24),
+            const Text(
+              '음성 인식 초기화 실패',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -368,11 +430,40 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 12),
-            Text(
-              '이 기기에서 음성 인식이 지원되지 않거나\n네트워크 연결을 확인해주세요.',
+            const SizedBox(height: 12),
+            const Text(
+              '기기의 음성 인식 서비스(Google Speech)를\n확인하거나 다시 시도해주세요.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white60, fontSize: 14, height: 1.6),
+            ),
+            if (_initError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _initError,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white30, fontSize: 11),
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: _initSpeech,
+              icon: const Icon(Icons.refresh),
+              label: const Text('다시 시도'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4ECDC4),
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
             ),
           ],
         ),
@@ -394,22 +485,19 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
             border: Border(
-              bottom: BorderSide(
-                color: Colors.white.withValues(alpha: 0.1),
-              ),
+              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
             ),
           ),
           child: Row(
             children: [
               const Icon(Icons.translate, color: Color(0xFF4ECDC4), size: 18),
               const SizedBox(width: 8),
-              Text(
-                isKorean
-                    ? '한국어로 말하면 그대로 표시됩니다'
-                    : '한국어 인식 → $targetLangName 실시간 번역',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
+              Expanded(
+                child: Text(
+                  isKorean
+                      ? '한국어로 말하면 그대로 표시됩니다'
+                      : '한국어 인식 → $targetLangName 실시간 번역',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ),
             ],
@@ -464,19 +552,19 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
                 if (_recognizedText.isEmpty &&
                     _translatedText.isEmpty &&
                     (!_isListening || _currentWords.isEmpty))
-                  _buildGuideView(lang),
+                  _buildGuideView(),
               ],
             ),
           ),
         ),
 
         // ── 하단 컨트롤 ────────────────────────────────────────
-        _buildControlBar(lang),
+        _buildControlBar(),
       ],
     );
   }
 
-  Widget _buildGuideView(LanguageService lang) {
+  Widget _buildGuideView() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 60),
@@ -494,11 +582,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
                   width: 2,
                 ),
               ),
-              child: const Icon(
-                Icons.mic,
-                size: 48,
-                color: Color(0xFF4ECDC4),
-              ),
+              child: const Icon(Icons.mic, size: 48, color: Color(0xFF4ECDC4)),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -583,8 +667,11 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
             text,
             style: TextStyle(
               fontSize: isHighlighted ? 20 : 16,
-              color: isHighlighted ? Colors.white : Colors.white.withValues(alpha: 0.85),
-              fontWeight: isHighlighted ? FontWeight.w600 : FontWeight.normal,
+              color: isHighlighted
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.85),
+              fontWeight:
+                  isHighlighted ? FontWeight.w600 : FontWeight.normal,
               height: 1.5,
             ),
           ),
@@ -594,7 +681,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   }
 
   // ── 하단 컨트롤 바 ────────────────────────────────────────────
-  Widget _buildControlBar(LanguageService lang) {
+  Widget _buildControlBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       decoration: BoxDecoration(
@@ -614,9 +701,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
                     ? '재시작 중...'
                     : '마이크 버튼을 눌러 시작',
             style: TextStyle(
-              color: _isListening
-                  ? const Color(0xFF4ECDC4)
-                  : Colors.white38,
+              color: _isListening ? const Color(0xFF4ECDC4) : Colors.white38,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -642,7 +727,8 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
                 boxShadow: _isListening
                     ? [
                         BoxShadow(
-                          color: const Color(0xFF4ECDC4).withValues(alpha: 0.4),
+                          color:
+                              const Color(0xFF4ECDC4).withValues(alpha: 0.4),
                           blurRadius: 20,
                           spreadRadius: 4,
                         ),
@@ -663,11 +749,16 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
 
   String _getLangName(String code) {
     switch (code) {
-      case 'ko': return '한국어';
-      case 'en': return 'English';
-      case 'zh': return '中文';
-      case 'ja': return '日本語';
-      default: return code;
+      case 'ko':
+        return '한국어';
+      case 'en':
+        return 'English';
+      case 'zh':
+        return '中文';
+      case 'ja':
+        return '日本語';
+      default:
+        return code;
     }
   }
 }
