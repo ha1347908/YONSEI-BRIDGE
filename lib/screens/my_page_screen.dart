@@ -5,12 +5,17 @@ import 'dart:convert';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import '../services/storage_service.dart';
+import '../services/firestore_service.dart';
 import 'login_screen.dart';
 import 'terms_of_service_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'saved_posts_screen.dart';
 import 'admin_approval_screen.dart';
 import 'admin_analytics_dashboard_screen.dart';
+import 'chat_screen.dart';
+import 'admin_chat_list_screen.dart';
+import 'admin_send_message_screen.dart';
+import 'bridge_live_screen.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -21,11 +26,13 @@ class MyPageScreen extends StatefulWidget {
 
 class _MyPageScreenState extends State<MyPageScreen> {
   int _unreadRecoveryCount = 0;
+  int _unreadChatCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadUnreadRecoveryCount();
+    _loadUnreadChatCount();
   }
 
   Future<void> _loadUnreadRecoveryCount() async {
@@ -39,6 +46,31 @@ class _MyPageScreenState extends State<MyPageScreen> {
       } catch (_) {}
     }
     if (mounted) setState(() => _unreadRecoveryCount = unread);
+  }
+
+  Future<void> _loadUnreadChatCount() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userId = authService.currentUserId;
+    if (userId == null || userId.isEmpty) return;
+    // 관리자: 전체 unread_by_admin 합산 / 일반 사용자: 자신의 unread_by_user
+    try {
+      if (authService.currentUserId == 'welovejesus') {
+        // 관리자는 chats 컬렉션 전체에서 합산 (간단히 snapshot 1회 조회)
+        final snap = await FirestoreService().chatsCol.get();
+        int total = 0;
+        for (final doc in snap.docs) {
+          total += ((doc.data()['unread_by_admin'] as num?) ?? 0).toInt();
+        }
+        if (mounted) setState(() => _unreadChatCount = total);
+      } else {
+        final doc = await FirestoreService().chatsCol.doc(userId).get();
+        if (doc.exists) {
+          final count =
+              ((doc.data()?['unread_by_user'] as num?) ?? 0).toInt();
+          if (mounted) setState(() => _unreadChatCount = count);
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _handleLogout(BuildContext context) async {
@@ -228,6 +260,115 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 MaterialPageRoute(builder: (_) => const SavedPostsScreen()),
               ),
             ),
+            // ── 채팅 항목 ────────────────────────────────────────────────
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline,
+                  color: Color(0xFF0038A8)),
+              title: Text(
+                authService.currentUserId == 'welovejesus'
+                    ? lang.translate('admin_chat_manage')
+                    : lang.translate('chat_with_admin'),
+              ),
+              subtitle: Text(
+                authService.currentUserId == 'welovejesus'
+                    ? lang.translate('admin_chat_manage_desc')
+                    : lang.translate('chat_with_admin_desc'),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_unreadChatCount > 0)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _unreadChatCount > 99
+                            ? '99+'
+                            : '$_unreadChatCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              onTap: () {
+                if (authService.currentUserId == 'welovejesus') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AdminChatListScreen()),
+                  ).then((_) => _loadUnreadChatCount());
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ChatScreen()),
+                  ).then((_) => _loadUnreadChatCount());
+                }
+              },
+            ),
+
+            // ── Bridge Live ──────────────────────────────────────────
+            const Divider(height: 1),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0A0E27), Color(0xFF1A1F40)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFF4ECDC4).withValues(alpha: 0.6),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.radio_button_checked,
+                  color: Color(0xFF4ECDC4),
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Bridge Live',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text('한국어 음성 → 내 언어로 실시간 번역'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BridgeLiveScreen()),
+              ),
+            ),
+
+            // ── 개별 메시지 발송 (welovejesus 관리자 전용) ──────────────
+            if (authService.currentUserId == 'welovejesus') ...[
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.send_outlined,
+                    color: Color(0xFF0038A8)),
+                title: const Text('개별 메시지 발송'),
+                subtitle: const Text('사용자를 선택해 각각 메시지를 보냅니다'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AdminSendMessageScreen()),
+                  );
+                },
+              ),
+            ],
 
             const Divider(height: 1),
 

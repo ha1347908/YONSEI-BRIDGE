@@ -56,11 +56,17 @@ class Post {
   final DateTime createdAt;
   final String categoryId;
   final bool isAdminPost;
+  final bool isPinned;
   final List<String>? imageUrls;
   final Map<String, dynamic>? targetFilters;
 
   /// 정보게시판 서브 카테고리 (info_board 전용)
   final InfoCategory? infoCategory;
+
+  // ── 카운터 필드 ───────────────────────────────────────
+  final int viewCount;
+  final int saveCount;
+  final int commentCount;
 
   // ── 자동번역 필드 ─────────────────────────────────────
   /// 작성 원문 (원본 텍스트 – title + content 통합 저장 X, 별도 관리)
@@ -85,9 +91,13 @@ class Post {
     required this.createdAt,
     required this.categoryId,
     this.isAdminPost = false,
+    this.isPinned = false,
     this.imageUrls,
     this.targetFilters,
     this.infoCategory,
+    this.viewCount = 0,
+    this.saveCount = 0,
+    this.commentCount = 0,
     this.originalTitle,
     this.originalContent,
     this.originalLanguage,
@@ -123,6 +133,7 @@ class Post {
       'createdAt': createdAt.toIso8601String(),
       'categoryId': categoryId,
       'isAdminPost': isAdminPost,
+      'is_pinned': isPinned,
       'imageUrls': imageUrls,
       'target_filters': targetFilters,
       'info_category': infoCategory?.id,
@@ -149,16 +160,50 @@ class Post {
       });
     }
 
+    // ── createdAt: ISO 문자열 / Firestore Timestamp / null 모두 처리 ──
+    DateTime createdAt;
+    final rawTs = map['createdAt'] ?? map['created_at'];
+    if (rawTs != null) {
+      try {
+        if (rawTs.runtimeType.toString().contains('Timestamp')) {
+          createdAt = (rawTs as dynamic).toDate() as DateTime;
+        } else if (rawTs is String && rawTs.isNotEmpty) {
+          createdAt = DateTime.tryParse(rawTs) ?? DateTime.now();
+        } else {
+          createdAt = DateTime.now();
+        }
+      } catch (_) {
+        createdAt = DateTime.now();
+      }
+    } else {
+      createdAt = DateTime.now();
+    }
+
+    // ── id: 여러 키 이름 허용 ──
+    final id = (map['id'] ?? map['post_id'] ?? '') as String;
+
+    // ── author: 여러 키 이름 허용 ──
+    final author = (map['author'] ?? map['author_name'] ?? 'Unknown') as String;
+
+    // ── categoryId: 여러 키 이름 허용 ──
+    final categoryId =
+        (map['categoryId'] ?? map['board_type'] ?? 'free_board') as String;
+
+    // ── isAdminPost: 여러 키 이름 허용 ──
+    final isAdminPost = map['isAdminPost'] as bool? ?? false;
+
     return Post(
-      id: map['id'] as String,
-      title: map['title'] as String,
-      content: map['content'] as String,
-      author: map['author'] as String,
+      id: id,
+      title: map['title'] as String? ?? '',
+      content: map['content'] as String? ?? '',
+      author: author,
       authorId: map['author_id'] as String? ?? '',
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      categoryId: map['categoryId'] as String,
-      isAdminPost: map['isAdminPost'] as bool? ?? false,
-      imageUrls: (map['imageUrls'] as List<dynamic>?)?.cast<String>(),
+      createdAt: createdAt,
+      categoryId: categoryId,
+      isAdminPost: isAdminPost,
+      isPinned: map['is_pinned'] as bool? ?? false,
+      imageUrls: (map['imageUrls'] as List<dynamic>?)?.cast<String>() ??
+          (map['image_urls'] as List<dynamic>?)?.cast<String>(),
       targetFilters: map['target_filters'] != null
           ? Map<String, dynamic>.from(map['target_filters'])
           : null,
@@ -170,6 +215,9 @@ class Post {
       originalLanguage: map['original_language'] as String?,
       translations: parsedTrans,
       isTranslated: map['is_translated'] as bool? ?? false,
+      viewCount: (map['view_count'] as num?)?.toInt() ?? 0,
+      saveCount: (map['save_count'] as num?)?.toInt() ?? 0,
+      commentCount: (map['comment_count'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -187,6 +235,7 @@ class Post {
       createdAt: createdAt,
       categoryId: categoryId,
       isAdminPost: isAdminPost,
+      isPinned: isPinned,
       imageUrls: imageUrls,
       targetFilters: targetFilters,
       infoCategory: infoCategory,

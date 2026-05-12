@@ -188,6 +188,24 @@ class LanguageService extends ChangeNotifier {
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': '아르바이트는 입국 후 6개월이 지나야 가능합니다',
+
+        // 댓글
+        'comments': '댓글',
+        'comment_count': '개 댓글',
+        'write_comment': '댓글을 입력하세요...',
+        'submit_comment': '등록',
+        'no_comments': '아직 댓글이 없습니다. 첫 댓글을 남겨보세요!',
+        'comment_submitted': '댓글이 등록되었습니다',
+        'comment_submit_failed': '댓글 등록에 실패했습니다',
+        'comment_translating': '번역 중...',
+        'see_original_comment': '원문 보기',
+        'see_translated_comment': '번역 보기',
+
+        // 채팅
+        'chat_with_admin': '관리자와 채팅하기',
+        'chat_with_admin_desc': '운영팀에게 문의 및 알림 메시지 받기',
+        'admin_chat_manage': '사용자 채팅 관리',
+        'admin_chat_manage_desc': '사용자들의 채팅 메시지를 확인하고 답변하세요',
       },
       'en': {
         // MVP new keys
@@ -351,6 +369,24 @@ class LanguageService extends ChangeNotifier {
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': 'Part-time work is only allowed 6 months after arrival',
+
+        // Comments
+        'comments': 'Comments',
+        'comment_count': ' Comments',
+        'write_comment': 'Write a comment...',
+        'submit_comment': 'Post',
+        'no_comments': 'No comments yet. Be the first to comment!',
+        'comment_submitted': 'Comment posted',
+        'comment_submit_failed': 'Failed to post comment',
+        'comment_translating': 'Translating...',
+        'see_original_comment': 'See original',
+        'see_translated_comment': 'See translation',
+
+        // Chat
+        'chat_with_admin': 'Chat with Admin',
+        'chat_with_admin_desc': 'Contact the team or receive notifications',
+        'admin_chat_manage': 'User Chat Management',
+        'admin_chat_manage_desc': 'Check and reply to user chat messages',
       },
       'zh': {
         // MVP 新键
@@ -514,6 +550,24 @@ class LanguageService extends ChangeNotifier {
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': '入境6个月后才可以打工',
+
+        // 评论
+        'comments': '评论',
+        'comment_count': ' 条评论',
+        'write_comment': '写评论...',
+        'submit_comment': '提交',
+        'no_comments': '暂无评论，抢先发表吧！',
+        'comment_submitted': '评论已提交',
+        'comment_submit_failed': '评论提交失败',
+        'comment_translating': '翻译中...',
+        'see_original_comment': '查看原文',
+        'see_translated_comment': '查看翻译',
+
+        // 聊天
+        'chat_with_admin': '与管理员聊天',
+        'chat_with_admin_desc': '向运营团队咨询或接收通知',
+        'admin_chat_manage': '用户聊天管理',
+        'admin_chat_manage_desc': '查看并回复用户聊天消息',
       },
       'ja': {
         // MVP 新キー
@@ -677,6 +731,24 @@ class LanguageService extends ChangeNotifier {
         
         // D-4-1 Visa Warning
         'd4_1_job_warning': 'アルバイトは入国6ヶ月後から可能です',
+
+        // コメント
+        'comments': 'コメント',
+        'comment_count': ' 件のコメント',
+        'write_comment': 'コメントを入力...',
+        'submit_comment': '投稿',
+        'no_comments': 'まだコメントがありません。最初にコメントしてみましょう！',
+        'comment_submitted': 'コメントが投稿されました',
+        'comment_submit_failed': 'コメントの投稿に失敗しました',
+        'comment_translating': '翻訳中...',
+        'see_original_comment': '原文を見る',
+        'see_translated_comment': '翻訳を見る',
+
+        // チャット
+        'chat_with_admin': '管理者とチャット',
+        'chat_with_admin_desc': '運営チームへお問い合わせ・通知を受け取る',
+        'admin_chat_manage': 'ユーザーチャット管理',
+        'admin_chat_manage_desc': 'ユーザーのチャットメッセージを確認・返信する',
       },
     };
   }

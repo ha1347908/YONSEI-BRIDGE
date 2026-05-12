@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// MVP 핵심 성장 지표 대시보드
-/// 4개 섹션: 사용자 활성 지표 / 콘텐츠 반응도 / 리텐션 분석 / 관리자 운영 지표
+/// MVP 핵심 성장 지표 대시보드 — Firestore 실시간 데이터 기반
 class AdminAnalyticsDashboardScreen extends StatefulWidget {
   const AdminAnalyticsDashboardScreen({super.key});
 
@@ -16,30 +13,40 @@ class AdminAnalyticsDashboardScreen extends StatefulWidget {
 
 class _AdminAnalyticsDashboardScreenState
     extends State<AdminAnalyticsDashboardScreen> {
+  final _db = FirebaseFirestore.instance;
+
   bool _isLoading = true;
-  String _selectedPeriod = '30'; // '7', '30', 'all'
+  String _error = '';
 
-  // ── 1. 사용자 활성 지표 ──────────────────────────────
-  int _dau = 0;
-  int _mau = 0;
-  int _pendingApprovalCount = 0;
-  Map<String, int> _usersByLanguage = {};
+  // ── 1. 사용자 지표 ──────────────────────────────────
+  int _totalUsers = 0;
+  int _approvedUsers = 0;
+  int _pendingUsers = 0;
+  int _blockedUsers = 0;
+  int _rejectedUsers = 0;
+  Map<String, int> _usersByNationality = {};
 
-  // ── 2. 콘텐츠 반응도 ──────────────────────────────────
-  List<Map<String, dynamic>> _topInfoPosts = []; // TOP 5 조회수 (정보게시판)
-  int _freeBoardPostCount = 0;
-  int _freeBoardCommentCount = 0;
-  int _scrapCount = 0;
+  // ── 2. 콘텐츠 지표 ────────────────────────────────────
+  int _totalPosts = 0;
+  int _infoPosts = 0;
+  int _freePosts = 0;
+  int _totalComments = 0;
+  int _totalViews = 0;
+  int _totalScraps = 0;
+  List<Map<String, dynamic>> _topViewedPosts = [];
 
-  // ── 3. 리텐션 분석 ────────────────────────────────────
-  Map<String, Map<String, double>> _retentionData = {};
-  double _actionRateReadInfo = 0; // 정보글 1개 이상 읽기 비율
-  double _actionRateWriteComment = 0; // 댓글 작성 비율
+  // ── 3. 최근 가입자 ────────────────────────────────────
+  List<Map<String, dynamic>> _recentUsers = [];
 
-  // ── 4. 관리자 운영 지표 ───────────────────────────────
-  double _avgApprovalHours = 0;
-  int _blockedUserCount = 0;
-  int _rejectedUserCount = 0;
+  // ── 4. 운영 지표 ──────────────────────────────────────
+  int _totalChats = 0;
+  int _pendingRecovery = 0;
+
+  // ── 5. DAU / MAU / 리텐션 지표 ────────────────────────
+  int _dau = 0;     // 오늘 로그인한 고유 사용자 수
+  int _mau = 0;     // 이번 달 로그인한 고유 사용자 수
+  double _retention3d = 0.0; // 3일 후 재방문율 (%)
+  List<Map<String, dynamic>> _dauTrend = []; // 최근 7일 DAU 추이
 
   @override
   void initState() {
@@ -47,263 +54,269 @@ class _AdminAnalyticsDashboardScreenState
     _loadAllData();
   }
 
-  // ─────────────────────────────────────────────────────
-  // 데이터 로드
-  // ─────────────────────────────────────────────────────
   Future<void> _loadAllData() async {
-    setState(() => _isLoading = true);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now();
-      final cutoff = _selectedPeriod == 'all'
-          ? DateTime(2020, 1, 1)
-          : now.subtract(Duration(days: int.parse(_selectedPeriod)));
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
 
+    try {
       await Future.wait([
-        _loadUserActiveMetrics(prefs, now, cutoff),
-        _loadContentMetrics(prefs, cutoff),
-        _loadRetentionMetrics(prefs, cutoff),
-        _loadAdminOperationMetrics(prefs),
+        _loadUserMetrics(),
+        _loadContentMetrics(),
+        _loadRecentUsers(),
+        _loadOperationMetrics(),
+        _loadEngagementMetrics(),
       ]);
     } catch (e) {
-      if (kDebugMode) debugPrint('Analytics load error: $e');
+      if (kDebugMode) debugPrint('Analytics error: $e');
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// 1. 사용자 활성 지표
-  Future<void> _loadUserActiveMetrics(
-      SharedPreferences prefs, DateTime now, DateTime cutoff) async {
-    final today = DateTime(now.year, now.month, now.day);
+  // ── 1. 사용자 지표 ──────────────────────────────────
+  Future<void> _loadUserMetrics() async {
+    final snap = await _db.collection('users').get();
+    final docs = snap.docs.map((d) => d.data()).toList();
+
+    int approved = 0, pending = 0, blocked = 0, rejected = 0;
+    final natCount = <String, int>{};
+
+    for (final u in docs) {
+      final status = u['status'] as String? ?? '';
+      if (status == 'Approved') approved++;
+      else if (status == 'Pending') pending++;
+      else if (status == 'Blocked') blocked++;
+      else if (status == 'Rejected') rejected++;
+
+      // 국적별 집계
+      final nat = u['nationality'] as String? ?? 'Unknown';
+      natCount[nat] = (natCount[nat] ?? 0) + 1;
+    }
+
+    // 상위 5개 국적만
+    final sortedNat = Map.fromEntries(
+      natCount.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value))
+    );
+    final topNat = Map.fromEntries(sortedNat.entries.take(6));
+
+    if (mounted) {
+      setState(() {
+        _totalUsers = docs.length;
+        _approvedUsers = approved;
+        _pendingUsers = pending;
+        _blockedUsers = blocked;
+        _rejectedUsers = rejected;
+        _usersByNationality = topNat;
+      });
+    }
+  }
+
+  // ── 2. 콘텐츠 지표 ────────────────────────────────────
+  Future<void> _loadContentMetrics() async {
+    final snap = await _db.collection('posts').get();
+    final docs = snap.docs;
+
+    int infoCount = 0, freeCount = 0;
+    int totalViews = 0, totalComments = 0, totalScraps = 0;
+    final allPosts = <Map<String, dynamic>>[];
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final board = data['board_type'] as String? ?? '';
+      if (board == 'info') infoCount++;
+      else if (board == 'free') freeCount++;
+
+      final views = data['view_count'] as int? ?? 0;
+      final comments = data['comment_count'] as int? ?? 0;
+      final scraps = data['save_count'] as int? ?? 0;
+      totalViews += views;
+      totalComments += comments;
+      totalScraps += scraps;
+
+      allPosts.add({
+        'id': doc.id,
+        'title': data['title'] ?? '',
+        'board_type': board,
+        'view_count': views,
+        'comment_count': comments,
+        'author_name': data['author_name'] ?? '',
+      });
+    }
+
+    // 조회수 TOP 5
+    allPosts.sort((a, b) =>
+        (b['view_count'] as int).compareTo(a['view_count'] as int));
+    final top5 = allPosts.take(5).toList();
+
+    if (mounted) {
+      setState(() {
+        _totalPosts = docs.length;
+        _infoPosts = infoCount;
+        _freePosts = freeCount;
+        _totalViews = totalViews;
+        _totalComments = totalComments;
+        _totalScraps = totalScraps;
+        _topViewedPosts = top5;
+      });
+    }
+  }
+
+  // ── 3. 최근 가입자 ────────────────────────────────────
+  Future<void> _loadRecentUsers() async {
+    final snap = await _db
+        .collection('users')
+        .orderBy('created_at', descending: true)
+        .limit(5)
+        .get();
+
+    final users = snap.docs.map((d) {
+      final data = d.data();
+      DateTime? createdAt;
+      try {
+        createdAt = (data['created_at'] as Timestamp?)?.toDate();
+      } catch (_) {}
+      return {
+        'name': data['nickname'] ?? data['name'] ?? '(이름 없음)',
+        'nationality': data['nationality'] ?? '-',
+        'status': data['status'] ?? 'Pending',
+        'created_at': createdAt,
+      };
+    }).toList();
+
+    if (mounted) setState(() => _recentUsers = users);
+  }
+
+  // ── 4. 운영 지표 ──────────────────────────────────────
+  Future<void> _loadOperationMetrics() async {
+    // 채팅방 수
+    final chatSnap = await _db.collection('chats').get();
+
+    // 미처리 복구 요청
+    final recoverySnap = await _db
+        .collection('recovery_requests')
+        .where('status', isEqualTo: 'Pending')
+        .get();
+
+    if (mounted) {
+      setState(() {
+        _totalChats = chatSnap.docs.length;
+        _pendingRecovery = recoverySnap.docs.length;
+      });
+    }
+  }
+
+  // ── 5. DAU / MAU / 3일 리텐션 ──────────────────────────
+  Future<void> _loadEngagementMetrics() async {
+    // users 컬렉션에서 last_login_at 필드 기반으로 DAU/MAU 계산
+    // 없는 경우 created_at 기반으로 fallback
+    final snap = await _db.collection('users').get();
+    final docs = snap.docs.map((d) => d.data()).toList();
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
     final monthStart = DateTime(now.year, now.month, 1);
 
-    int dau = 0, mau = 0, pending = 0;
-    final langCount = <String, int>{};
+    // DAU: 오늘 로그인 사용자
+    int dau = 0;
+    // MAU: 이번 달 로그인 사용자
+    int mau = 0;
 
-    final allKeys = prefs.getKeys();
+    // 3일 리텐션: 3-10일 전 가입자 중 이후에도 로그인한 비율
+    int cohortSize = 0;
+    int retained = 0;
 
-    // 가입 승인 대기
-    for (final key in allKeys) {
-      if (key.startsWith('user_') && !key.contains('login_')) {
-        final raw = prefs.getString(key);
-        if (raw == null) continue;
+    // 최근 7일 DAU 추이
+    final dauByDay = <String, Set<String>>{};
+    for (int i = 6; i >= 0; i--) {
+      final d = todayStart.subtract(Duration(days: i));
+      dauByDay['${d.month}/${d.day}'] = {};
+    }
+
+    for (final u in docs) {
+      final uid = u['user_id'] as String? ?? u['email'] as String? ?? '';
+      if (uid.isEmpty) continue;
+
+      // last_login_at 또는 created_at 사용
+      DateTime? lastLogin;
+      final rawLogin = u['last_login_at'] ?? u['created_at'];
+      if (rawLogin != null) {
         try {
-          final u = jsonDecode(raw) as Map<String, dynamic>;
-          final status = u['status'] ?? u['approvalStatus'] ?? '';
-          if (status == 'Pending' || status == 'pending') pending++;
-
-          // 언어별 분류
-          final lang = u['preferredLanguage'] ?? u['language'] ?? 'ko';
-          langCount[lang] = (langCount[lang] ?? 0) + 1;
-
-          // 로그인 기록으로 DAU/MAU 계산
-          final uid = u['userId'] ?? u['id'] ?? '';
-          if (uid.isEmpty) continue;
-          final loginRaw = prefs.getString('user_login_$uid');
-          if (loginRaw == null) continue;
-          final logins = (jsonDecode(loginRaw) as List).cast<String>();
-          for (final l in logins) {
-            final d = DateTime.tryParse(l);
-            if (d == null) continue;
-            if (d.isAfter(today)) dau++;
-            if (d.isAfter(monthStart)) mau++;
+          if (rawLogin.runtimeType.toString().contains('Timestamp')) {
+            lastLogin = (rawLogin as Timestamp).toDate();
+          } else if (rawLogin is String) {
+            lastLogin = DateTime.tryParse(rawLogin);
           }
         } catch (_) {}
       }
+
+      if (lastLogin == null) continue;
+
+      // DAU 계산
+      if (!lastLogin.isBefore(todayStart)) dau++;
+
+      // MAU 계산
+      if (!lastLogin.isBefore(monthStart)) mau++;
+
+      // 최근 7일 DAU 추이
+      for (int i = 6; i >= 0; i--) {
+        final dayStart = todayStart.subtract(Duration(days: i));
+        final dayEnd = dayStart.add(const Duration(days: 1));
+        if (!lastLogin.isBefore(dayStart) && lastLogin.isBefore(dayEnd)) {
+          final key = '${dayStart.month}/${dayStart.day}';
+          dauByDay[key]?.add(uid);
+        }
+      }
+
+      // 3일 리텐션: 가입일로부터 3-10일 전 코호트
+      DateTime? createdAt;
+      final rawCreated = u['created_at'];
+      if (rawCreated != null) {
+        try {
+          if (rawCreated.runtimeType.toString().contains('Timestamp')) {
+            createdAt = (rawCreated as Timestamp).toDate();
+          } else if (rawCreated is String) {
+            createdAt = DateTime.tryParse(rawCreated);
+          }
+        } catch (_) {}
+      }
+
+      if (createdAt != null) {
+        final daysSinceSignup = now.difference(createdAt).inDays;
+        if (daysSinceSignup >= 3 && daysSinceSignup <= 30) {
+          cohortSize++;
+          // 가입 후 3일 이후에도 로그인했다면 retention으로 카운트
+          final signupDate = DateTime(createdAt.year, createdAt.month, createdAt.day);
+          final returnDate = signupDate.add(const Duration(days: 3));
+          if (!lastLogin.isBefore(returnDate)) {
+            retained++;
+          }
+        }
+      }
     }
+
+    final retention = cohortSize > 0 ? (retained / cohortSize * 100) : 0.0;
+
+    final trendList = dauByDay.entries
+        .map((e) => {'label': e.key, 'count': e.value.length})
+        .toList();
 
     if (mounted) {
       setState(() {
         _dau = dau;
         _mau = mau;
-        _pendingApprovalCount = pending;
-        _usersByLanguage = langCount;
-      });
-    }
-  }
-
-  /// 2. 콘텐츠 반응도
-  Future<void> _loadContentMetrics(
-      SharedPreferences prefs, DateTime cutoff) async {
-    // 정보게시판 TOP 5 (posts_info_board)
-    final infoRaw = prefs.getString('posts_info_board');
-    final infoPosts = <Map<String, dynamic>>[];
-    if (infoRaw != null) {
-      try {
-        final list = (jsonDecode(infoRaw) as List).cast<Map<String, dynamic>>();
-        infoPosts.addAll(list);
-      } catch (_) {}
-    }
-    infoPosts.sort((a, b) =>
-        ((b['viewCount'] ?? 0) as int).compareTo((a['viewCount'] ?? 0) as int));
-
-    // 자유게시판 게시글·댓글 수
-    final freeRaw = prefs.getString('posts_free_board');
-    int freePostCount = 0, commentCount = 0;
-    if (freeRaw != null) {
-      try {
-        final list = (jsonDecode(freeRaw) as List).cast<Map<String, dynamic>>();
-        freePostCount = list.length;
-        for (final p in list) {
-          final cmts = p['comments'] as List? ?? [];
-          commentCount += cmts.length;
-        }
-      } catch (_) {}
-    }
-
-    // 스크랩 수 (saved_posts_*)
-    int scrap = 0;
-    for (final key in prefs.getKeys()) {
-      if (key.startsWith('saved_posts_')) {
-        final raw = prefs.getString(key);
-        if (raw != null) {
-          try {
-            scrap += (jsonDecode(raw) as List).length;
-          } catch (_) {}
-        }
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _topInfoPosts = infoPosts.take(5).toList();
-        _freeBoardPostCount = freePostCount;
-        _freeBoardCommentCount = commentCount;
-        _scrapCount = scrap;
-      });
-    }
-  }
-
-  /// 3. 리텐션 분석
-  Future<void> _loadRetentionMetrics(
-      SharedPreferences prefs, DateTime cutoff) async {
-    final retentionData = <String, Map<String, double>>{};
-    int totalApproved = 0, readInfo = 0, wroteComment = 0;
-
-    for (final key in prefs.getKeys()) {
-      if (!key.startsWith('user_') || key.contains('login_')) continue;
-      final raw = prefs.getString(key);
-      if (raw == null) continue;
-      try {
-        final u = jsonDecode(raw) as Map<String, dynamic>;
-        final signupStr = u['signup_date'] ?? u['createdAt'];
-        if (signupStr == null) continue;
-        final signupDate = DateTime.tryParse(signupStr);
-        if (signupDate == null || signupDate.isBefore(cutoff)) continue;
-
-        final status = u['status'] ?? '';
-        if (status == 'Approved' || status == 'approved') totalApproved++;
-
-        final cohort = DateFormat('yyyy-MM-dd').format(signupDate);
-        retentionData.putIfAbsent(
-            cohort, () => {'day1': 0, 'day7': 0, 'day30': 0, 'total': 0});
-        retentionData[cohort]!['total'] =
-            retentionData[cohort]!['total']! + 1;
-
-        final uid = u['userId'] ?? u['id'] ?? '';
-        if (uid.isEmpty) continue;
-        final loginRaw = prefs.getString('user_login_$uid');
-        if (loginRaw != null) {
-          final logins = (jsonDecode(loginRaw) as List).cast<String>();
-          _checkRetention(logins, signupDate, retentionData[cohort]!);
-        }
-
-        // 핵심 액션: 정보글 읽기 여부
-        final readRaw = prefs.getString('read_info_$uid');
-        if (readRaw != null && (jsonDecode(readRaw) as List).isNotEmpty) {
-          readInfo++;
-        }
-
-        // 핵심 액션: 댓글 작성 여부
-        final cmtRaw = prefs.getString('comment_history_$uid');
-        if (cmtRaw != null && (jsonDecode(cmtRaw) as List).isNotEmpty) {
-          wroteComment++;
-        }
-      } catch (_) {}
-    }
-
-    // 비율(%) 변환
-    retentionData.forEach((_, data) {
-      final t = data['total']!;
-      if (t > 0) {
-        data['day1'] = data['day1']! / t * 100;
-        data['day7'] = data['day7']! / t * 100;
-        data['day30'] = data['day30']! / t * 100;
-      }
-    });
-
-    if (mounted) {
-      setState(() {
-        _retentionData = retentionData;
-        _actionRateReadInfo =
-            totalApproved > 0 ? readInfo / totalApproved * 100 : 0;
-        _actionRateWriteComment =
-            totalApproved > 0 ? wroteComment / totalApproved * 100 : 0;
-      });
-    }
-  }
-
-  void _checkRetention(List<String> logins, DateTime signupDate,
-      Map<String, double> cohortData) {
-    bool d1 = false, d7 = false, d30 = false;
-    for (final l in logins) {
-      final d = DateTime.tryParse(l);
-      if (d == null) continue;
-      final diff = d.difference(signupDate).inDays;
-      if (diff >= 1 && diff < 2) d1 = true;
-      if (diff >= 7 && diff < 8) d7 = true;
-      if (diff >= 30 && diff < 31) d30 = true;
-    }
-    if (d1) cohortData['day1'] = cohortData['day1']! + 1;
-    if (d7) cohortData['day7'] = cohortData['day7']! + 1;
-    if (d30) cohortData['day30'] = cohortData['day30']! + 1;
-  }
-
-  /// 4. 관리자 운영 지표
-  Future<void> _loadAdminOperationMetrics(SharedPreferences prefs) async {
-    int blocked = 0, rejected = 0;
-    final approvalTimes = <double>[];
-
-    for (final key in prefs.getKeys()) {
-      if (!key.startsWith('user_') || key.contains('login_')) continue;
-      final raw = prefs.getString(key);
-      if (raw == null) continue;
-      try {
-        final u = jsonDecode(raw) as Map<String, dynamic>;
-        final status = u['status'] ?? u['approvalStatus'] ?? '';
-        if (status == 'Blocked' || status == 'blocked') blocked++;
-        if (status == 'Rejected' || status == 'rejected') rejected++;
-
-        // 승인 소요 시간 (신청일 → 승인일)
-        final signupStr = u['signup_date'] ?? u['createdAt'];
-        final approvedStr = u['approvedAt'] ?? u['approved_at'];
-        if (signupStr != null && approvedStr != null) {
-          final signup = DateTime.tryParse(signupStr);
-          final approved = DateTime.tryParse(approvedStr);
-          if (signup != null && approved != null) {
-            approvalTimes
-                .add(approved.difference(signup).inMinutes.toDouble() / 60);
-          }
-        }
-      } catch (_) {}
-    }
-
-    final avgHours = approvalTimes.isNotEmpty
-        ? approvalTimes.reduce((a, b) => a + b) / approvalTimes.length
-        : 0.0;
-
-    if (mounted) {
-      setState(() {
-        _blockedUserCount = blocked;
-        _rejectedUserCount = rejected;
-        _avgApprovalHours = avgHours;
+        _retention3d = retention;
+        _dauTrend = trendList;
       });
     }
   }
 
   // ─────────────────────────────────────────────────────
-  // build
+  // BUILD
   // ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -323,66 +336,481 @@ class _AdminAnalyticsDashboardScreenState
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadAllData,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildPeriodFilter(),
-                    const SizedBox(height: 20),
+          : _error.isNotEmpty
+              ? _buildErrorView()
+              : RefreshIndicator(
+                  onRefresh: _loadAllData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ① 사용자 현황
+                        _buildSectionHeader(
+                            '① 사용자 현황', Icons.people_alt, const Color(0xFF0038A8)),
+                        const SizedBox(height: 12),
+                        _buildUserSection(),
+                        const SizedBox(height: 24),
 
-                    // ① 사용자 활성 지표
-                    _buildSectionHeader(
-                        '① 사용자 활성 지표', Icons.people_alt, const Color(0xFF0038A8)),
-                    const SizedBox(height: 12),
-                    _buildUserActiveSection(),
-                    const SizedBox(height: 24),
+                        // ② 콘텐츠 현황
+                        _buildSectionHeader(
+                            '② 콘텐츠 현황', Icons.bar_chart, const Color(0xFF6B4EFF)),
+                        const SizedBox(height: 12),
+                        _buildContentSection(),
+                        const SizedBox(height: 24),
 
-                    // ② 콘텐츠 반응도
-                    _buildSectionHeader(
-                        '② 콘텐츠 반응도', Icons.bar_chart, const Color(0xFF6B4EFF)),
-                    const SizedBox(height: 12),
-                    _buildContentSection(),
-                    const SizedBox(height: 24),
+                        // ③ 국적별 분포
+                        _buildSectionHeader(
+                            '③ 국적별 사용자 분포', Icons.public, const Color(0xFF00897B)),
+                        const SizedBox(height: 12),
+                        _buildNationalitySection(),
+                        const SizedBox(height: 24),
 
-                    // ③ 리텐션 분석
-                    _buildSectionHeader(
-                        '③ 리텐션 분석', Icons.trending_up, const Color(0xFF00897B)),
-                    const SizedBox(height: 12),
-                    _buildRetentionSection(),
-                    const SizedBox(height: 24),
+                        // ④ 최근 가입자
+                        _buildSectionHeader(
+                            '④ 최근 가입자', Icons.person_add, Colors.orange[700]!),
+                        const SizedBox(height: 12),
+                        _buildRecentUsersSection(),
+                        const SizedBox(height: 24),
 
-                    // ④ 관리자 운영 지표
-                    _buildSectionHeader(
-                        '④ 관리자 운영 지표', Icons.admin_panel_settings, Colors.orange[700]!),
-                    const SizedBox(height: 12),
-                    _buildAdminOperationSection(),
-                    const SizedBox(height: 32),
-                  ],
+                        // ⑤ 조회수 TOP 5
+                        _buildSectionHeader(
+                            '⑤ 조회수 TOP 5', Icons.trending_up, Colors.red[600]!),
+                        const SizedBox(height: 12),
+                        _buildTopPostsSection(),
+                        const SizedBox(height: 24),
+
+                        // ⑥ 운영 현황
+                        _buildSectionHeader(
+                            '⑥ 운영 현황', Icons.admin_panel_settings, Colors.purple[600]!),
+                        const SizedBox(height: 12),
+                        _buildOperationSection(),
+                        const SizedBox(height: 24),
+
+                        // ⑦ 참여 지표 (DAU / MAU / 리텐션)
+                        _buildSectionHeader(
+                            '⑦ 참여 지표 (DAU · MAU · 리텐션)',
+                            Icons.show_chart,
+                            Colors.teal[700]!),
+                        const SizedBox(height: 12),
+                        _buildEngagementSection(),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
   // ─────────────────────────────────────────────────────
-  // 공통 헬퍼 위젯
+  // 섹션 위젯들
+  // ─────────────────────────────────────────────────────
+
+  Widget _buildUserSection() {
+    return Column(
+      children: [
+        // 전체 / 승인 / 대기 / 차단 / 거절
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statTile('전체\n가입자', '$_totalUsers명',
+                  color: const Color(0xFF0038A8), icon: Icons.group),
+              _vDivider(),
+              _statTile('승인\n완료', '$_approvedUsers명',
+                  color: Colors.green[600]!, icon: Icons.check_circle),
+              _vDivider(),
+              _statTile('승인\n대기', '$_pendingUsers명',
+                  color: Colors.orange[600]!, icon: Icons.hourglass_top),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statTile('차단\n유저', '$_blockedUsers명',
+                  color: Colors.red[600]!, icon: Icons.block),
+              _vDivider(),
+              _statTile('가입\n거절', '$_rejectedUsers명',
+                  color: Colors.grey[600]!, icon: Icons.person_off),
+              _vDivider(),
+              _statTile('승인률',
+                  _totalUsers > 0
+                      ? '${(_approvedUsers / _totalUsers * 100).toStringAsFixed(1)}%'
+                      : '-',
+                  color: const Color(0xFF6B4EFF), icon: Icons.pie_chart),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentSection() {
+    return Column(
+      children: [
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statTile('전체\n게시글', '$_totalPosts건',
+                  color: const Color(0xFF6B4EFF), icon: Icons.article),
+              _vDivider(),
+              _statTile('정보\n게시판', '$_infoPosts건',
+                  color: const Color(0xFF0038A8), icon: Icons.info),
+              _vDivider(),
+              _statTile('자유\n게시판', '$_freePosts건',
+                  color: Colors.green[600]!, icon: Icons.edit_note),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildCard(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statTile('총 댓글 수', '$_totalComments건',
+                  color: const Color(0xFF00897B), icon: Icons.comment),
+              _vDivider(),
+              _statTile('총 조회수', '$_totalViews회',
+                  color: Colors.orange[700]!, icon: Icons.visibility),
+              _vDivider(),
+              _statTile('총 스크랩', '$_totalScraps건',
+                  color: Colors.red[400]!, icon: Icons.bookmark),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNationalitySection() {
+    if (_usersByNationality.isEmpty) {
+      return _buildCard(
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('국적 데이터 없음', style: TextStyle(color: Colors.grey)),
+          ),
+        ),
+      );
+    }
+
+    final total = _usersByNationality.values.fold(0, (a, b) => a + b);
+    final colors = [
+      const Color(0xFF0038A8),
+      const Color(0xFF6B4EFF),
+      Colors.green[600]!,
+      Colors.orange[600]!,
+      Colors.red[400]!,
+      Colors.purple[400]!,
+    ];
+
+    return _buildCard(
+      child: Column(
+        children: _usersByNationality.entries.toList().asMap().entries.map((e) {
+          final idx = e.key;
+          final entry = e.value;
+          final pct = total > 0 ? entry.value / total : 0.0;
+          final color = colors[idx % colors.length];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(entry.key,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w500)),
+                    Text(
+                        '${entry.value}명 (${(pct * 100).toStringAsFixed(1)}%)',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: color)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 8,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildRecentUsersSection() {
+    if (_recentUsers.isEmpty) {
+      return _buildCard(
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('가입자 없음', style: TextStyle(color: Colors.grey)),
+          ),
+        ),
+      );
+    }
+
+    return _buildCard(
+      child: Column(
+        children: _recentUsers.map((u) {
+          final status = u['status'] as String;
+          final statusColor = status == 'Approved'
+              ? Colors.green[600]!
+              : status == 'Pending'
+                  ? Colors.orange[600]!
+                  : Colors.red[400]!;
+          final statusLabel = status == 'Approved'
+              ? '승인'
+              : status == 'Pending'
+                  ? '대기'
+                  : status == 'Blocked'
+                      ? '차단'
+                      : '거절';
+
+          final dt = u['created_at'] as DateTime?;
+          final dateStr = dt != null
+              ? '${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}'
+              : '-';
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: const Color(0xFF0038A8).withValues(alpha: 0.1),
+                  child: const Icon(Icons.person, size: 18,
+                      color: Color(0xFF0038A8)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(u['name'] as String,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('${u['nationality']}  ·  $dateStr',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey[500])),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(statusLabel,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor)),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTopPostsSection() {
+    if (_topViewedPosts.isEmpty) {
+      return _buildCard(
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('게시글 없음', style: TextStyle(color: Colors.grey)),
+          ),
+        ),
+      );
+    }
+
+    return _buildCard(
+      child: Column(
+        children: _topViewedPosts.asMap().entries.map((e) {
+          final rank = e.key + 1;
+          final post = e.value;
+          final rankColors = [
+            const Color(0xFFFFD700),
+            const Color(0xFFC0C0C0),
+            const Color(0xFFCD7F32),
+            Colors.grey[400]!,
+            Colors.grey[400]!,
+          ];
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: rankColors[e.key],
+                  child: Text('$rank',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(post['title'] as String,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(
+                          post['board_type'] == 'info' ? '정보게시판' : '자유게시판',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey[500])),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.visibility,
+                            size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 2),
+                        Text('${post['view_count']}',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0038A8))),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Icon(Icons.comment, size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 2),
+                        Text('${post['comment_count']}',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600])),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildOperationSection() {
+    return _buildCard(
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statTile('활성\n채팅방', '$_totalChats개',
+                  color: Colors.purple[600]!, icon: Icons.chat_bubble),
+              _vDivider(),
+              _statTile('미처리\n복구 요청', '$_pendingRecovery건',
+                  color: _pendingRecovery > 0 ? Colors.red[600]! : Colors.grey[600]!,
+                  icon: Icons.lock_reset),
+              _vDivider(),
+              _statTile('게시글당\n평균 댓글',
+                  _totalPosts > 0
+                      ? '${(_totalComments / _totalPosts).toStringAsFixed(1)}건'
+                      : '-',
+                  color: const Color(0xFF00897B), icon: Icons.forum),
+            ],
+          ),
+          if (_pendingRecovery > 0) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.red[600], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '미처리 계정 복구 요청이 $_pendingRecovery건 있습니다. 회원 승인 관리에서 확인하세요.',
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.black87),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 56, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            const Text('데이터를 불러오지 못했습니다',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(_error,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadAllData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('다시 시도'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0038A8),
+                  foregroundColor: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 공통 헬퍼
   // ─────────────────────────────────────────────────────
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Row(
       children: [
         Icon(icon, color: color, size: 22),
         const SizedBox(width: 8),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
+        Text(title,
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -395,313 +823,148 @@ class _AdminAnalyticsDashboardScreenState
     );
   }
 
-  Widget _buildStatTile(String label, String value,
-      {Color? valueColor, IconData? icon}) {
+  Widget _statTile(String label, String value,
+      {required Color color, IconData? icon}) {
     return Column(
       children: [
-        if (icon != null) Icon(icon, color: valueColor ?? Colors.grey, size: 20),
+        if (icon != null) Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: valueColor ?? const Color(0xFF0038A8),
-          ),
-        ),
+        Text(value,
+            style: TextStyle(
+                fontSize: 20, fontWeight: FontWeight.bold, color: color)),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-          textAlign: TextAlign.center,
-        ),
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            textAlign: TextAlign.center),
       ],
     );
   }
 
-  Widget _buildPeriodFilter() {
-    return _buildCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('기간 설정',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _periodChip('최근 7일', '7'),
-              const SizedBox(width: 8),
-              _periodChip('최근 30일', '30'),
-              const SizedBox(width: 8),
-              _periodChip('전체', 'all'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _vDivider() =>
+      Container(height: 50, width: 1, color: Colors.grey[200]);
 
-  Widget _periodChip(String label, String value) {
-    final selected = _selectedPeriod == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (v) {
-        if (v) {
-          setState(() => _selectedPeriod = value);
-          _loadAllData();
-        }
-      },
-      selectedColor: const Color(0xFF0038A8),
-      labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87,
-          fontSize: 13),
-    );
-  }
+  // ── ⑦ 참여 지표 섹션 ────────────────────────────────────
+  Widget _buildEngagementSection() {
+    final maxDau = _dauTrend.isEmpty
+        ? 1
+        : _dauTrend
+            .map((e) => e['count'] as int)
+            .reduce((a, b) => a > b ? a : b);
 
-  // ─────────────────────────────────────────────────────
-  // ① 사용자 활성 지표
-  // ─────────────────────────────────────────────────────
-  Widget _buildUserActiveSection() {
     return Column(
       children: [
-        // DAU / MAU / 승인 대기
+        // DAU / MAU / 리텐션 핵심 수치
         _buildCard(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatTile('DAU\n(오늘 접속)', '$_dau명',
-                  valueColor: const Color(0xFF0038A8), icon: Icons.today),
-              _verticalDivider(),
-              _buildStatTile('MAU\n(이번 달 접속)', '$_mau명',
-                  valueColor: const Color(0xFF6B4EFF), icon: Icons.calendar_month),
-              _verticalDivider(),
-              _buildStatTile('신규 가입\n승인 대기', '$_pendingApprovalCount명',
-                  valueColor: Colors.orange[700], icon: Icons.hourglass_top),
+              _statTile('DAU\n오늘 활성',
+                  '$_dau명',
+                  color: Colors.teal[700]!,
+                  icon: Icons.today),
+              _vDivider(),
+              _statTile('MAU\n월간 활성',
+                  '$_mau명',
+                  color: Colors.blue[700]!,
+                  icon: Icons.calendar_month),
+              _vDivider(),
+              _statTile('3일\n리텐션',
+                  '${_retention3d.toStringAsFixed(1)}%',
+                  color: _retention3d >= 30
+                      ? Colors.green[600]!
+                      : _retention3d >= 10
+                          ? Colors.orange[600]!
+                          : Colors.red[600]!,
+                  icon: Icons.repeat),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // 언어별 사용자 비율
+        // 리텐션 설명 카드
         _buildCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('언어별 사용자 비율',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 12),
-              if (_usersByLanguage.isEmpty)
-                const Center(
-                    child: Text('데이터 없음',
-                        style: TextStyle(color: Colors.grey)))
-              else
-                ..._buildLanguageBar(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildLanguageBar() {
-    final labels = {'ko': '한국어', 'en': 'English', 'zh': '中文', 'ja': '日本語'};
-    final colors = {
-      'ko': const Color(0xFF0038A8),
-      'en': const Color(0xFF6B4EFF),
-      'zh': Colors.red[400]!,
-      'ja': Colors.green[600]!,
-    };
-    final total = _usersByLanguage.values.fold(0, (a, b) => a + b);
-    return _usersByLanguage.entries.map((e) {
-      final pct = total > 0 ? e.value / total : 0.0;
-      final label = labels[e.key] ?? e.key;
-      final color = colors[e.key] ?? Colors.grey;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w500)),
-                Text('${e.value}명 (${(pct * 100).toStringAsFixed(1)}%)',
-                    style: TextStyle(fontSize: 13, color: color,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: pct,
-                minHeight: 8,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(color),
+              Row(
+                children: [
+                  Icon(Icons.info_outline, size: 14, color: Colors.grey[500]),
+                  const SizedBox(width: 6),
+                  Text(
+                    '지표 설명',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700]),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-      );
-    }).toList();
-  }
-
-  Widget _verticalDivider() {
-    return Container(height: 48, width: 1, color: Colors.grey[200]);
-  }
-
-  // ─────────────────────────────────────────────────────
-  // ② 콘텐츠 반응도
-  // ─────────────────────────────────────────────────────
-  Widget _buildContentSection() {
-    return Column(
-      children: [
-        // 자유게시판 게시글-댓글 비율 + 스크랩 수
-        _buildCard(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatTile('자유게시판\n게시글 수', '$_freeBoardPostCount건',
-                  valueColor: const Color(0xFF6B4EFF), icon: Icons.edit_note),
-              _verticalDivider(),
-              _buildStatTile('댓글 수', '$_freeBoardCommentCount건',
-                  valueColor: const Color(0xFF00897B), icon: Icons.comment),
-              _verticalDivider(),
-              _buildStatTile('게시글\n스크랩 수', '$_scrapCount건',
-                  valueColor: Colors.orange[700], icon: Icons.bookmark),
+              const SizedBox(height: 8),
+              _infoRow('DAU', '오늘 1회 이상 로그인한 고유 사용자 수'),
+              _infoRow('MAU', '이번 달 1회 이상 로그인한 고유 사용자 수'),
+              _infoRow('3일 리텐션',
+                  '가입 후 3일 뒤에도 재방문한 사용자 비율 (가입 3~30일 코호트 기준)'),
+              _infoRow('DAU/MAU 비율',
+                  _mau > 0
+                      ? '${(_dau / _mau * 100).toStringAsFixed(1)}% (앱 충성도 지표)'
+                      : '-'),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // 정보게시판 TOP 5 조회수
+        // 최근 7일 DAU 막대그래프
         _buildCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('정보게시판 TOP 5 조회수',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(
+                '최근 7일 DAU 추이',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800]),
+              ),
               const SizedBox(height: 12),
-              if (_topInfoPosts.isEmpty)
-                const Center(
-                    child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text('게시글 데이터 없음',
-                      style: TextStyle(color: Colors.grey)),
-                ))
+              if (_dauTrend.isEmpty)
+                Center(
+                  child: Text('데이터 없음',
+                      style: TextStyle(color: Colors.grey[400])),
+                )
               else
-                ..._topInfoPosts.asMap().entries.map((e) {
-                  final rank = e.key + 1;
-                  final post = e.value;
-                  final title =
-                      post['title'] as String? ?? '(제목 없음)';
-                  final views =
-                      (post['viewCount'] ?? post['views'] ?? 0) as int;
-                  return _buildRankRow(rank, title, '$views회');
-                }),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRankRow(int rank, String title, String metric) {
-    final rankColor = rank == 1
-        ? const Color(0xFFFFD700)
-        : rank == 2
-            ? const Color(0xFFC0C0C0)
-            : rank == 3
-                ? const Color(0xFFCD7F32)
-                : Colors.grey[400]!;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: rankColor,
-            child: Text('$rank',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Text(title,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13))),
-          Text(metric,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0038A8))),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────
-  // ③ 리텐션 분석
-  // ─────────────────────────────────────────────────────
-  Widget _buildRetentionSection() {
-    return Column(
-      children: [
-        // 핵심 액션 수행률
-        _buildCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('핵심 액션 수행률',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 12),
-              _buildActionRateRow(
-                  '정보글 1개 이상 읽기', _actionRateReadInfo, const Color(0xFF0038A8)),
-              const SizedBox(height: 10),
-              _buildActionRateRow(
-                  '댓글 작성 경험', _actionRateWriteComment, const Color(0xFF6B4EFF)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Day-N 리텐션 테이블
-        _buildCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Day-N 리텐션 (코호트별)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 12),
-              if (_retentionData.isEmpty)
-                const Center(
-                    child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text('리텐션 데이터 없음',
-                      style: TextStyle(color: Colors.grey)),
-                ))
-              else
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(Colors.grey[100]),
-                    columns: const [
-                      DataColumn(label: Text('코호트')),
-                      DataColumn(label: Text('Day 1 (%)')),
-                      DataColumn(label: Text('Day 7 (%)')),
-                      DataColumn(label: Text('Day 30 (%)')),
-                    ],
-                    rows: _retentionData.entries.map((e) {
-                      return DataRow(cells: [
-                        DataCell(Text(e.key,
-                            style: const TextStyle(fontSize: 12))),
-                        DataCell(_retentionCell(e.value['day1']!)),
-                        DataCell(_retentionCell(e.value['day7']!)),
-                        DataCell(_retentionCell(e.value['day30']!)),
-                      ]);
+                SizedBox(
+                  height: 80,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: _dauTrend.map((entry) {
+                      final count = entry['count'] as int;
+                      final ratio =
+                          maxDau > 0 ? count / maxDau : 0.0;
+                      final barH = ratio * 60 + 4;
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text('$count',
+                              style: const TextStyle(
+                                  fontSize: 9, color: Colors.grey)),
+                          const SizedBox(height: 2),
+                          Container(
+                            width: 28,
+                            height: barH,
+                            decoration: BoxDecoration(
+                              color: Colors.teal[400],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            entry['label'] as String,
+                            style: const TextStyle(
+                                fontSize: 9, color: Colors.grey),
+                          ),
+                        ],
+                      );
                     }).toList(),
                   ),
                 ),
@@ -712,106 +975,26 @@ class _AdminAnalyticsDashboardScreenState
     );
   }
 
-  Widget _buildActionRateRow(String label, double rate, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-            Text('${rate.toStringAsFixed(1)}%',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: rate / 100,
-            minHeight: 8,
-            backgroundColor: Colors.grey[200],
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _retentionCell(double value) {
-    Color color = Colors.grey;
-    if (value >= 40) {
-      color = Colors.green[700]!;
-    } else if (value >= 20) {
-      color = Colors.orange[700]!;
-    } else if (value > 0) {
-      color = Colors.red[400]!;
-    }
-    return Text(
-      '${value.toStringAsFixed(1)}%',
-      style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: color),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────
-  // ④ 관리자 운영 지표
-  // ─────────────────────────────────────────────────────
-  Widget _buildAdminOperationSection() {
-    return _buildCard(
-      child: Column(
+  Widget _infoRow(String label, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatTile(
-                '평균 승인\n소요 시간',
-                _avgApprovalHours > 0
-                    ? '${_avgApprovalHours.toStringAsFixed(1)}h'
-                    : '-',
-                valueColor: Colors.orange[700],
-                icon: Icons.timer_outlined,
-              ),
-              _verticalDivider(),
-              _buildStatTile(
-                '차단 유저 수',
-                '$_blockedUserCount명',
-                valueColor: Colors.red[600],
-                icon: Icons.block,
-              ),
-              _verticalDivider(),
-              _buildStatTile(
-                '가입 거절\n유저 수',
-                '$_rejectedUserCount명',
-                valueColor: Colors.grey[700],
-                icon: Icons.person_off,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange[200]!),
+          SizedBox(
+            width: 70,
+            child: Text(
+              label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.teal[700]),
             ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.orange[700], size: 18),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    '회원 승인은 수동으로 진행됩니다.\n관리자 승인 화면에서 개별 검토 후 승인/거절하세요.',
-                    style: TextStyle(fontSize: 12, color: Colors.black87),
-                  ),
-                ),
-              ],
+          ),
+          Expanded(
+            child: Text(
+              desc,
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ),
         ],

@@ -2,7 +2,7 @@ name: campus_bridge
 description: "YONSEI BRIDGE - Campus support platform for international students at Yonsei University Mirae Campus"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.9.2
@@ -13,6 +13,7 @@ dependencies:
 
   # Core Firebase packages (LOCKED versions)
   firebase_core: 3.6.0
+  firebase_auth: 5.3.1
   cloud_firestore: 5.4.3
   firebase_storage: 12.3.2
   firebase_messaging: 15.1.3
@@ -41,6 +42,9 @@ dependencies:
   
   # Charts and data visualization
   fl_chart: 0.69.2
+
+  # Speech recognition (Bridge Live)
+  speech_to_text: 7.0.0
 
 dev_dependencies:
   flutter_test:

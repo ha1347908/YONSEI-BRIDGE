@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import '../services/translation_service.dart';
 import '../models/post_model.dart';
 
@@ -86,10 +86,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      final userId = authService.currentUserId ?? 'unknown';
+      final userId   = authService.currentUserId   ?? 'unknown';
       final userName = authService.currentUserName ?? 'Unknown User';
 
-      // 이미지 base64 변환
+      // ── 이미지 base64 인코딩 (첨부 이미지가 있는 경우) ──────────────────
       final List<String> imageBase64List = [];
       for (final img in _images) {
         try {
@@ -97,52 +97,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         } catch (_) {}
       }
 
-      final postId = 'post_${DateTime.now().millisecondsSinceEpoch}';
-      final postData = {
-        'post_id': postId,
-        'title': _titleController.text.trim(),
-        'content': _contentController.text.trim(),
-        'category': widget.categoryId,
-        // 정보게시판 서브 카테고리 저장
-        'info_category':
-            _isInfoBoard ? _selectedInfoCategory?.id : null,
-        'author_id': userId,
-        'author_name': userName,
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-        'view_count': 0,
-        'like_count': 0,
-        'comment_count': 0,
-        'is_notice': false,
-        'is_deleted': false,
-        'images': imageBase64List,
-        'tags': [],
-      };
+      // ── board_type 결정 ────────────────────────────────────────────────
+      final boardType = _isInfoBoard ? 'info' : 'free';
 
-      final prefs = await SharedPreferences.getInstance();
-      final postsKey = 'posts_${widget.categoryId}';
-      final existing =
-          jsonDecode(prefs.getString(postsKey) ?? '[]') as List<dynamic>;
-      existing.insert(0, postData);
-      await prefs.setString(postsKey, jsonEncode(existing));
+      final title   = _titleController.text.trim();
+      final content = _contentController.text.trim();
 
-      // ── 백그라운드 자동번역 트리거 ────────────────────────
-      final tempPost = Post(
-        id: postId,
-        title: _titleController.text.trim(),
-        content: _contentController.text.trim(),
-        author: userName,
-        authorId: userId,
-        createdAt: DateTime.now(),
-        categoryId: widget.categoryId,
-        isAdminPost: widget.categoryId == 'info_board',
-        infoCategory: _isInfoBoard ? _selectedInfoCategory : null,
-      );
-      // 의도적 fire-and-forget (UI를 블록하지 않고 백그라운드 번역)
-      TranslationService.translatePostAndCache(
-        post: tempPost,
-        prefs: prefs,
-        postsKey: postsKey,
+      // ── 원문 언어 자동 감지 ────────────────────────────────────────────
+      String detectedLang = 'auto'; // 기본값 'auto': 감지 실패해도 번역 가능
+      try {
+        final raw = await TranslationService.detectLanguage('$title $content');
+        if (raw.startsWith('zh')) {
+          detectedLang = 'zh';
+        } else if (raw == 'unknown' || raw.isEmpty) {
+          detectedLang = 'auto'; // 감지 실패 시 'auto' 유지
+        } else {
+          detectedLang = raw;
+        }
+      } catch (_) {}
+
+      // ── 다른 3개 언어로 백그라운드 번역 ───────────────────────────────
+      // detectedLang이 'auto'면 모든 언어로 번역 시도
+      final targets = detectedLang == 'auto'
+          ? kSupportedLangs // 전체 4개 언어 번역
+          : kSupportedLangs.where((l) => l != detectedLang).toList();
+      final Map<String, Map<String, String>> translations = {};
+      try {
+        await Future.wait(targets.map((lang) async {
+          final tTitle = await TranslationService.translate(
+            text: title,
+            targetLang: lang,
+            sourceLang: 'auto', // 항상 auto: Google이 원문 언어 자동 감지
+          );
+          final tContent = await TranslationService.translate(
+            text: content,
+            targetLang: lang,
+            sourceLang: 'auto', // 항상 auto
+          );
+          translations[lang] = {'title': tTitle, 'content': tContent};
+        }));
+      } catch (_) {}
+
+      // ── Firestore에 게시글 저장 ────────────────────────────────────────
+      final fs = FirestoreService();
+      await fs.createPost(
+        title:      title,
+        content:    content,
+        authorId:   userId,
+        authorName: userName,
+        boardType:  boardType,
+        infoCategory: _isInfoBoard ? _selectedInfoCategory?.id : null,
+        imageUrls:  imageBase64List,
+        translations: translations.map(
+          (k, v) => MapEntry(k, {'title': v['title']!, 'content': v['content']!}),
+        ),
+        originalLanguage: detectedLang,
       );
 
       setState(() => _isLoading = false);
@@ -165,8 +174,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('게시글 등록 실패: $e'),
-              backgroundColor: Colors.red),
+            content: Text('게시글 등록 실패: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

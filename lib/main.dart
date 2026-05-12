@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -60,7 +60,20 @@ class _MyAppState extends State<MyApp> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              // 페이지 전환 시 흰색 깜빡임 방지 - 부드러운 Fade 전환
+              pageTransitionsTheme: const PageTransitionsTheme(
+                builders: {
+                  TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+                  TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+                  TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+                },
+              ),
             ),
+            // ✅ 웹 전용 반응형 래퍼: 모바일 앱이 PC에서도 모바일 사이즈로 표시
+            builder: (context, child) {
+              if (!kIsWeb) return child!;
+              return _WebMobileFrame(child: child!);
+            },
             home: const SplashScreen(),
           );
         },
@@ -84,25 +97,29 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    
+    // ✅ Bug 2 Fix: AuthService.checkLoginStatus()를 먼저 호출하여
+    // _currentUserId / _currentUserName / _currentUserPermission 등
+    // Provider 내부 상태를 SharedPreferences에서 완전히 복원한 뒤 라우팅한다.
+    final authService = Provider.of<AuthService>(context, listen: false);
+    await authService.checkLoginStatus();
+
+    // 스플래시 최소 노출 시간 보장
     await Future.delayed(const Duration(seconds: 2));
-    
-    if (mounted) {
-      if (isLoggedIn) {
-        // Restore per-user saved-posts scope on auto-login
-        final savedUserId = prefs.getString('userId');
-        Provider.of<StorageService>(context, listen: false)
-            .setCurrentUser(savedUserId);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
+
+    if (!mounted) return;
+
+    if (authService.isLoggedIn) {
+      // StorageService에도 userId 반영 (북마크 스코프 격리)
+      Provider.of<StorageService>(context, listen: false)
+          .setCurrentUser(authService.currentUserId);
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
     }
   }
 
@@ -151,6 +168,40 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.white,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 웹 전용 모바일 프레임 래퍼 ──────────────────────────────────────────────
+/// 웹 브라우저에서 앱을 열었을 때 스마트폰처럼 중앙 정렬 + 최대 너비 500px로
+/// 표시하여 모바일 UI가 PC 화면에서 늘어나 보이지 않도록 한다.
+class _WebMobileFrame extends StatelessWidget {
+  final Widget child;
+  const _WebMobileFrame({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E), // 바깥 영역 어두운 배경
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: ClipRect(
+            child: Container(
+              decoration: const BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x55000000),
+                    blurRadius: 32,
+                    spreadRadius: 8,
+                  ),
+                ],
+              ),
+              child: child,
+            ),
           ),
         ),
       ),

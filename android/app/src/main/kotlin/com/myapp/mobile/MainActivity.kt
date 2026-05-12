@@ -7,7 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.myapp.mobile/security"
+    private val CHANNEL = "com.campusbridge.campus_bridge/security"
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,3 +56,7 @@ class MainActivity : FlutterActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 }
+
+
+
+

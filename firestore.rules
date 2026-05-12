@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════════════════════════════
+    // 헬퍼 함수
+    // ══════════════════════════════════════════════════════════════
+
+    /// Firebase Auth 로그인 여부
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    /// Firebase Auth 로그인 + Firestore에서 Approved 유저
+    function isApprovedUser() {
+      return isAuthenticated()
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'Approved';
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // users 컬렉션
+    // ══════════════════════════════════════════════════════════════
+    match /users/{userId} {
+      // 읽기: 전면 허용 (앱 레벨 인증으로 충분)
+      allow read: if true;
+
+      // 쓰기: 전면 허용
+      //   - 신규 가입 시 Firebase Auth 생성 직후 Firestore 문서 생성
+      //   - 관리자(request.auth==null) 승인/거절 처리
+      //   - 본인 프로필 업데이트
+      allow write: if true;
+
+      // saved_posts: 전면 허용 (앱 레벨에서 인증 처리)
+      match /saved_posts/{postId} {
+        allow read, write: if true;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // posts 컬렉션
+    // ══════════════════════════════════════════════════════════════
+    match /posts/{postId} {
+      // 읽기: 전면 허용 (앱 레벨 인증으로 충분)
+      allow read: if true;
+
+      // 게시글 생성: 관리자 or 로그인한 유저
+      allow create: if request.auth == null
+                    || isAuthenticated();
+
+      // 수정/삭제: 관리자 or 본인 작성자 or 승인 유저
+      allow update, delete:
+                   if request.auth == null
+                   || (isAuthenticated()
+                       && resource.data.author_id == request.auth.uid)
+                   || isApprovedUser();
+
+      // comments 서브컬렉션
+      match /comments/{commentId} {
+        // 읽기: 전면 허용
+        allow read: if true;
+
+        allow create: if request.auth == null
+                      || isAuthenticated();
+
+        allow update: if request.auth == null
+                      || isAuthenticated();
+
+        // 삭제: 관리자만
+        allow delete: if request.auth == null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // chats 컬렉션 (유저 ↔ 관리자 1:1 채팅)
+    // ══════════════════════════════════════════════════════════════
+    match /chats/{userId} {
+      allow read, write: if request.auth == null
+                         || (request.auth != null
+                             && request.auth.uid == userId);
+
+      match /messages/{messageId} {
+        allow read, write: if request.auth == null
+                           || (request.auth != null
+                               && request.auth.uid == userId);
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // recovery_requests
+    // ══════════════════════════════════════════════════════════════
+    match /recovery_requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth == null;
+    }
+
+  }
+}

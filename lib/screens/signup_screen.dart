@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
-import '../services/language_service.dart';
 import '../widgets/country_search_dropdown.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -116,117 +115,377 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _showPrivacyConsent() async {
-    final languageService =
-        Provider.of<LanguageService>(context, listen: false);
-    final currentLang = languageService.currentLanguage;
+    // ── 가입 시 언어 설정 불가 → 항상 영어로 표시 ──────────────────────────
+    // Sign-up occurs before language can be set, so always display in English.
+    final Map<String, Map<String, String>> privacyContent = {
+      'ko': {
+        'title': '개인정보 수집·이용 동의',
+        'body': '''[Team Yonsei-Bridge](이하 "서비스")는 귀하의 개인정보를 소중히 여기며 개인정보 보호법을 준수합니다. 회원가입 시 동의란에 체크하심으로써 아래와 같이 귀하의 정보 수집 및 이용에 동의하시게 됩니다.
 
-    String consentText;
-    switch (currentLang) {
-      case 'en':
-        consentText = '''PRIVACY POLICY CONSENT
+━━━━━━━━━━━━━━━━━━━━━━
+1. 수집하는 개인정보 항목
 
-By clicking "I Agree", you acknowledge that you have read and understood our Privacy Policy and agree to:
+서비스 제공을 위해 아래 최소한의 정보를 수집합니다.
 
-1. Collection of personal information (name, email, nationality, contact, student ID photo)
-2. Use of information for account verification and service provision
-3. Storage of student ID photo until approval/rejection (then permanently deleted)
-4. Processing of your data in accordance with applicable privacy laws
+■ 필수 항목
+이름, 이메일 주소, 학번, 학생증 사진(인증용), 접속 로그, 쿠키
 
-Your student ID photo will be permanently deleted immediately after administrator approval or rejection, with no backups retained.
+■ 선택 항목 (광고/마케팅용)
+광고 식별자(IDFA/ADID), 서비스 이용 내역, 위치 정보
 
-For full details, please review our Privacy Policy in Settings.''';
-        break;
-      case 'zh':
-        consentText = '''隐私政策同意
+━━━━━━━━━━━━━━━━━━━━━━
+2. 수집·이용 목적
 
-点击"我同意"即表示您已阅读并理解我们的隐私政策，并同意：
+• 본인 인증: 학생증을 통한 신원 확인으로 무단 접근 방지
+• 서비스 제공: 정보게시판, 커뮤니티 기능, 다국어 번역 서비스 제공
+• 문의 지원: 관리자 연락처를 통한 이용자 요청 및 불만 처리
+• 부정 이용 방지: 신원 도용, 서류 위조 등 금지 행위 탐지 및 예방
+• 맞춤형 마케팅: 이용자 활동 데이터 기반 맞춤 정보 및 광고 제공
 
-1. 收集个人信息（姓名、电子邮件、国籍、联系方式、学生证照片）
-2. 使用信息进行账户验证和服务提供
-3. 存储学生证照片直到批准/拒绝（然后永久删除）
-4. 根据适用的隐私法处理您的数据
+━━━━━━━━━━━━━━━━━━━━━━
+3. 보유 및 이용 기간
 
-您的学生证照片将在管理员批准或拒绝后立即永久删除，不保留任何备份。
+• 기본 방침: 원칙적으로 이용자가 서비스에서 탈퇴(계정 삭제)할 때까지 개인정보를 보유 및 이용합니다.
 
-有关完整详细信息，请查看设置中的隐私政策。''';
-        break;
-      case 'ja':
-        consentText = '''プライバシーポリシーへの同意
+• [부정 행위 엄격 예외] 신원 도용 또는 서류 위조로 이용이 종료된 이용자의 정보는 재가입 방지 및 법적 수사 협력을 위해 영구적으로 보유합니다.
 
-「同意する」をクリックすることで、プライバシーポリシーを読んで理解し、以下に同意したことになります：
+━━━━━━━━━━━━━━━━━━━━━━
+4. 거부 권리 및 불이익
 
-1. 個人情報の収集（氏名、メール、国籍、連絡先、学生証の写真）
-2. アカウント確認とサービス提供のための情報使用
-3. 承認/拒否まで学生証写真を保存（その後永久削除）
-4. 適用されるプライバシー法に従ったデータ処理
+개인정보 수집·이용을 거부할 권리가 있습니다. 단, 필수 항목은 연세대학교 미래캠퍼스 본인 인증에 필수적이므로 필수 정보 제공을 거부할 경우 회원가입 및 서비스 이용이 불가합니다.
 
-学生証の写真は、管理者による承認または拒否の直後に完全に削除され、バックアップは保持されません。
+━━━━━━━━━━━━━━━━━━━━━━
+5. 맞춤형 광고 및 추적
 
-詳細については、設定でプライバシーポリシーをご確認ください。''';
-        break;
-      default: // Korean
-        consentText = '''개인정보처리방침 동의
+서비스는 최적화된 콘텐츠 및 광고 제공을 위해 광고 식별자(IDFA)를 수집할 수 있습니다. 기기 설정을 통해 언제든지 추적을 거부할 수 있습니다.
 
-"동의합니다"를 클릭하면 개인정보처리방침을 읽고 이해했으며 다음 사항에 동의하는 것으로 간주됩니다:
+━━━━━━━━━━━━━━━━━━━━━━
+부칙 (시행일)
+본 약관은 2026년 3월 18일부터 시행됩니다.
 
-1. 개인정보 수집 (이름, 이메일, 국적, 연락처, 학생증 사진)
-2. 계정 확인 및 서비스 제공을 위한 정보 사용
-3. 승인/거부 시까지 학생증 사진 보관 (이후 영구 삭제)
-4. 관련 개인정보 보호법에 따른 데이터 처리
+문의처
+• 이메일: iamharam@yonsei.ac.kr
+• 전화: +82 10-2620-4267''',
+        'agree': '동의합니다',
+        'disagree': '동의하지 않습니다',
+        'deny_title': '회원가입 불가',
+        'deny_body': '개인정보 수집·이용에 동의하지 않으셨습니다.\n\n필수 항목에 동의하지 않으면 연세브릿지 서비스에 가입하실 수 없습니다.',
+        'deny_confirm': '확인',
+      },
+      'en': {
+        'title': 'Personal Information Collection and Usage Agreement',
+        'body': '''[Team Yonsei-Bridge] (hereinafter referred to as "the Service") values your personal information and complies with the Personal Information Protection Act. By checking the consent box during registration, you agree to the collection and use of your information as follows:
 
-학생증 사진은 관리자 승인 또는 거부 즉시 영구적으로 삭제되며, 어떠한 백업도 보관하지 않습니다.
+━━━━━━━━━━━━━━━━━━━━━━
+1. Items of Personal Information Collected
 
-자세한 내용은 설정에서 개인정보처리방침을 확인하세요.''';
-    }
+The Service collects the following minimum information necessary for providing services:
 
+■ Required Items
+Name, Email address, Student ID number, Photo of Student ID (for authentication), Access logs, and Cookies.
+
+■ Optional Items (for Ad/Marketing)
+Advertising Identifier (IDFA/ADID), Service usage history, and Location data.
+
+━━━━━━━━━━━━━━━━━━━━━━
+2. Purpose of Collection and Use
+
+• User Authentication: Verifying identity through student ID to prevent unauthorized access.
+• Service Provision: Providing information boards, community features, and multilingual translation services.
+• Inquiry Support: Responding to user requests and complaints via the administrator contact.
+• Prevention of Misuse: Detecting and preventing identity theft, document forgery, and other prohibited activities.
+• Personalized Marketing: Providing customized information and advertisements based on user activity data.
+
+━━━━━━━━━━━━━━━━━━━━━━
+3. Retention and Usage Period
+
+• Standard Policy: In principle, personal information is retained and used until the user withdraws from the service (account deletion).
+
+• [Strict Exception for Fraud]: Information regarding users terminated for identity theft or document forgery will be permanently retained to prevent re-registration and to cooperate with legal investigations.
+
+━━━━━━━━━━━━━━━━━━━━━━
+4. Right to Refuse and Consequences
+
+You have the right to refuse the collection and use of your personal information. However, since the required items are essential for identity verification at Yonsei University Mirae Campus, refusal to provide required information will result in the inability to sign up or use the service.
+
+━━━━━━━━━━━━━━━━━━━━━━
+5. Personalized Advertisements and Tracking
+
+The Service may collect advertising identifiers (IDFA) to provide optimized content and ads. You may opt-out of this tracking at any time through your device settings.
+
+━━━━━━━━━━━━━━━━━━━━━━
+Addendum (Effective Date)
+These terms shall take effect as of March 18, 2026.
+
+Contact Information
+• Email: iamharam@yonsei.ac.kr
+• Phone: +82 10-2620-4267''',
+        'agree': 'I Agree',
+        'disagree': 'I Disagree',
+        'deny_title': 'Registration Not Available',
+        'deny_body': 'You have not agreed to the collection and use of personal information.\n\nWithout consent to the required items, you cannot sign up for the YONSEI BRIDGE service.',
+        'deny_confirm': 'OK',
+      },
+      'zh': {
+        'title': '个人信息收集与使用同意',
+        'body': '''[Team Yonsei-Bridge]（以下简称"服务"）重视您的个人信息，并遵守个人信息保护法。在注册时勾选同意框，即表示您同意按如下方式收集和使用您的信息：
+
+━━━━━━━━━━━━━━━━━━━━━━
+1. 收集的个人信息项目
+
+服务收集以下提供服务所需的最少信息：
+
+■ 必填项目
+姓名、电子邮件地址、学号、学生证照片（用于认证）、访问日志及Cookie。
+
+■ 选填项目（广告/营销用）
+广告标识符（IDFA/ADID）、服务使用记录、位置数据。
+
+━━━━━━━━━━━━━━━━━━━━━━
+2. 收集与使用目的
+
+• 用户认证：通过学生证验证身份，防止未经授权的访问。
+• 服务提供：提供信息板、社区功能及多语言翻译服务。
+• 咨询支持：通过管理员联系方式响应用户请求和投诉。
+• 防止滥用：检测并防止身份盗用、文件伪造及其他违禁行为。
+• 个性化营销：根据用户活动数据提供定制信息和广告。
+
+━━━━━━━━━━━━━━━━━━━━━━
+3. 保留与使用期限
+
+• 基本方针：原则上，个人信息保留至用户退出服务（删除账户）为止。
+
+• [严格的欺诈例外规定]：因身份盗用或文件伪造而被终止服务的用户信息，将被永久保留，以防止重新注册并配合法律调查。
+
+━━━━━━━━━━━━━━━━━━━━━━
+4. 拒绝权利及后果
+
+您有权拒绝收集和使用您的个人信息。但是，由于必填项目是延世大学未来校区身份验证的必要条件，拒绝提供必填信息将导致无法注册或使用服务。
+
+━━━━━━━━━━━━━━━━━━━━━━
+5. 个性化广告与追踪
+
+服务可能会收集广告标识符（IDFA）以提供优化的内容和广告。您可以随时通过设备设置选择退出追踪。
+
+━━━━━━━━━━━━━━━━━━━━━━
+附则（生效日期）
+本条款自2026年3月18日起生效。
+
+联系方式
+• 电子邮件：iamharam@yonsei.ac.kr
+• 电话：+82 10-2620-4267''',
+        'agree': '我同意',
+        'disagree': '我不同意',
+        'deny_title': '无法注册',
+        'deny_body': '您尚未同意收集和使用个人信息。\n\n如不同意必填项目，则无法注册延世桥服务。',
+        'deny_confirm': '确认',
+      },
+      'ja': {
+        'title': '個人情報収集・利用同意',
+        'body': '''[Team Yonsei-Bridge]（以下「サービス」）はお客様の個人情報を大切にし、個人情報保護法を遵守します。会員登録時に同意欄にチェックすることで、以下のとおり情報の収集・利用に同意したものとみなされます。
+
+━━━━━━━━━━━━━━━━━━━━━━
+1. 収集する個人情報の項目
+
+サービス提供に必要な最小限の情報を収集します。
+
+■ 必須項目
+氏名、メールアドレス、学籍番号、学生証写真（認証用）、アクセスログ、Cookie
+
+■ 任意項目（広告・マーケティング用）
+広告識別子（IDFA/ADID）、サービス利用履歴、位置情報
+
+━━━━━━━━━━━━━━━━━━━━━━
+2. 収集・利用目的
+
+• 本人確認：学生証による身元確認で不正アクセスを防止
+• サービス提供：情報掲示板、コミュニティ機能、多言語翻訳サービスの提供
+• お問い合わせ対応：管理者連絡先を通じたユーザーリクエスト・苦情への対応
+• 不正利用防止：なりすまし、書類偽造その他禁止行為の検出・防止
+• パーソナライズドマーケティング：ユーザー活動データに基づくカスタマイズ情報・広告の提供
+
+━━━━━━━━━━━━━━━━━━━━━━
+3. 保有・利用期間
+
+• 基本方針：原則として、ユーザーがサービスを退会（アカウント削除）するまで個人情報を保有・利用します。
+
+• [不正行為に関する厳格な例外]：なりすましまたは書類偽造により利用が停止されたユーザーの情報は、再登録防止および法的捜査への協力のため永久に保有します。
+
+━━━━━━━━━━━━━━━━━━━━━━
+4. 拒否権と不利益
+
+個人情報の収集・利用を拒否する権利があります。ただし、必須項目は延世大学ミレキャンパスにおける本人確認に不可欠なため、必須情報の提供を拒否した場合は会員登録およびサービスの利用ができません。
+
+━━━━━━━━━━━━━━━━━━━━━━
+5. パーソナライズド広告とトラッキング
+
+サービスは最適化されたコンテンツおよび広告提供のため、広告識別子（IDFA）を収集する場合があります。端末の設定からいつでもトラッキングを拒否できます。
+
+━━━━━━━━━━━━━━━━━━━━━━
+附則（施行日）
+本規約は2026年3月18日より施行されます。
+
+お問い合わせ先
+• メール：iamharam@yonsei.ac.kr
+• 電話：+82 10-2620-4267''',
+        'agree': '同意する',
+        'disagree': '同意しない',
+        'deny_title': '会員登録不可',
+        'deny_body': '個人情報の収集・利用にご同意いただけませんでした。\n\n必須項目への同意がない場合、YONSEI BRIDGEサービスへの登録はできません。',
+        'deny_confirm': '確認',
+      },
+    };
+
+    // 항상 영어로 고정 (Always fixed to English)
+    final lang = privacyContent['en']!;
+
+    // ── 개인정보 동의 팝업 표시 ────────────────────────────────────────────
     final agreed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(currentLang == 'ko'
-            ? '개인정보처리방침'
-            : currentLang == 'en'
-                ? 'Privacy Policy'
-                : currentLang == 'zh'
-                    ? '隐私政策'
-                    : 'プライバシーポリシー'),
-        content: SingleChildScrollView(
-          child: Text(
-            consentText,
-            style: const TextStyle(fontSize: 14, height: 1.5),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(currentLang == 'ko'
-                ? '취소'
-                : currentLang == 'en'
-                    ? 'Cancel'
-                    : currentLang == 'zh'
-                        ? '取消'
-                        : 'キャンセル'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0038A8),
-              foregroundColor: Colors.white,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 헤더
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0038A8),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.shield_outlined, color: Colors.white, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      lang['title']!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Text(currentLang == 'ko'
-                ? '동의합니다'
-                : currentLang == 'en'
-                    ? 'I Agree'
-                    : currentLang == 'zh'
-                        ? '我同意'
-                        : '同意する'),
-          ),
-        ],
+            // 본문 (스크롤)
+            SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.55,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  lang['body']!,
+                  style: const TextStyle(fontSize: 13, height: 1.7, color: Color(0xFF222222)),
+                ),
+              ),
+            ),
+            // 구분선
+            const Divider(height: 1),
+            // 버튼
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red[700],
+                        side: BorderSide(color: Colors.red[300]!),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        lang['disagree']!,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0038A8),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        lang['agree']!,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
     if (agreed == true) {
       await _submitSignup();
+    } else {
+      // ── 동의 거부 시 안내 팝업 ────────────────────────────────────────────
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: Row(
+              children: [
+                Icon(Icons.block, color: Colors.red[600], size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  lang['deny_title']!,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red[700],
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              lang['deny_body']!,
+              style: const TextStyle(fontSize: 14, height: 1.6),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0038A8),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(lang['deny_confirm']!),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 

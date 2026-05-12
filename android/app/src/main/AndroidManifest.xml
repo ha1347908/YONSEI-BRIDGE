@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 마이크 권한 (Bridge Live 음성인식) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- 인터넷 권한 (번역 API) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="YONSEI BRIDGE"
         android:name="${applicationName}"
@@ -43,3 +47,11 @@
         </intent>
     </queries>
 </manifest>
+
+
+
+
+
+
+
+

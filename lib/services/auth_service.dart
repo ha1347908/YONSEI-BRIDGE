@@ -83,6 +83,13 @@ class AuthService extends ChangeNotifier {
       if (account['password'] != password) {
         throw Exception('Incorrect password');
       }
+      // ── 관리자는 Firebase Auth를 사용하지 않으므로, 혹시 남아있는
+      //    Firebase Auth 세션을 반드시 제거합니다.
+      //    (웹에서 이전 일반유저 세션이 남으면 Firestore 규칙이 엉뚱한
+      //     request.auth.uid 로 평가돼 permission-denied 가 발생합니다.)
+      if (_auth.currentUser != null) {
+        await _auth.signOut();
+      }
       await _setSession(
         userId: emailOrId,
         userName: account['name'] as String,
@@ -228,16 +235,17 @@ class AuthService extends ChangeNotifier {
       throw Exception('Password must be at least 8 characters.');
     }
 
+    String? createdUid;
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
-      final uid = credential.user!.uid;
+      createdUid = credential.user!.uid;
 
       // Create Firestore user document (status = Pending)
       await _fs.createUser(
-        uid: uid,
+        uid: createdUid,
         email: email.trim(),
         name: name,
         nickname: nickname,
@@ -252,7 +260,7 @@ class AuthService extends ChangeNotifier {
 
       // Sign out immediately — user must wait for admin approval
       await _auth.signOut();
-      return uid;
+      return createdUid;
     } on FirebaseAuthException catch (e) {
       if (kDebugMode) debugPrint('[AuthService] signUp FirebaseAuthException code=${e.code} msg=${e.message}');
       // Firebase Auth not enabled yet → fallback: save to Firestore only
@@ -277,8 +285,27 @@ class AuthService extends ChangeNotifier {
         );
         return fallbackUid;
       }
+      // email-already-in-use: Firebase Auth에 계정이 이미 있으면
+      // Firestore에도 문서가 있는지 확인
+      if (e.code == 'email-already-in-use') {
+        final existing = await _fs.getUserByEmail(email.trim());
+        if (existing != null) {
+          // Firestore에도 있으면 → 이미 가입된 계정
+          throw Exception('This email is already registered. Please log in or use Account Recovery.');
+        } else {
+          // Firebase Auth에만 있고 Firestore에 없으면 → 이전 가입 실패 잔여
+          // 사용자가 직접 로그인해서 삭제할 수 없으므로 안내 메시지 제공
+          throw Exception('A previous sign-up attempt did not complete. Please contact the administrator at iamharam@yonsei.ac.kr to reset your account.');
+        }
+      }
       throw Exception(_mapFirebaseAuthError(e.code));
     } catch (e) {
+      // Firestore 저장 실패 시 Firebase Auth 계정 롤백
+      if (createdUid != null) {
+        try {
+          await _auth.currentUser?.delete();
+        } catch (_) {}
+      }
       if (kDebugMode) debugPrint('[AuthService] signUp error: $e');
       rethrow;
     }
@@ -322,17 +349,48 @@ class AuthService extends ChangeNotifier {
     required bool canDelete,
     required bool rememberMe,
   }) async {
-    _currentUserId = userId;
-    _currentUserName = userName;
+    // ── 이름 확정 로직 ───────────────────────────────────────────────────────
+    // 관리자 계정은 하드코딩 이름을 그대로 사용.
+    // 일반 유저는 Firestore에서 nickname → name → emailOrId 순으로 확정.
+    // (userName 파라미터가 이미 올바른 닉네임이어도 Firestore로 재확인해
+    //  가장 최신 값을 저장한다.)
+    String resolvedName = userName;
+    final isAdmin = _adminAccounts.containsKey(userId);
+
+    if (!isAdmin) {
+      try {
+        final userData = await _fs.getUser(userId);
+        if (userData != null) {
+          final nickname = userData['nickname'] as String?;
+          final name     = userData['name']     as String?;
+          if (nickname != null && nickname.isNotEmpty) {
+            resolvedName = nickname;
+          } else if (name != null && name.isNotEmpty) {
+            resolvedName = name;
+          }
+          // userData에서 permission도 최신으로 갱신
+        }
+      } catch (_) {
+        // 네트워크 오류 → 파라미터로 받은 userName 사용
+      }
+    }
+
+    // 최후 안전망: 빈 값이면 userId 표시
+    if (resolvedName.isEmpty || resolvedName == 'Unknown') {
+      resolvedName = userId;
+    }
+
+    _currentUserId         = userId;
+    _currentUserName       = resolvedName;
     _currentUserPermission = permission;
-    _canDeleteAccount = canDelete;
-    _isLoggedIn = true;
+    _canDeleteAccount      = canDelete;
+    _isLoggedIn            = true;
 
     if (rememberMe) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', true);
       await prefs.setString('userId', userId);
-      await prefs.setString('userName', userName);
+      await prefs.setString('userName', resolvedName);      // ← 검증된 이름 저장
       await prefs.setString('userPermission', permission);
       await prefs.setBool('canDeleteAccount', canDelete);
     }
@@ -364,13 +422,95 @@ class AuthService extends ChangeNotifier {
   Future<void> checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     _isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    if (_isLoggedIn) {
-      _currentUserId = prefs.getString('userId');
-      _currentUserName = prefs.getString('userName');
-      _currentUserPermission =
-          prefs.getString('userPermission') ?? 'user';
-      _canDeleteAccount = prefs.getBool('canDeleteAccount') ?? true;
+
+    if (!_isLoggedIn) {
+      notifyListeners();
+      return;
     }
+
+    // SharedPreferences에서 기본값 복원
+    _currentUserId         = prefs.getString('userId');
+    _currentUserName       = prefs.getString('userName');
+    _currentUserPermission = prefs.getString('userPermission') ?? 'user';
+    _canDeleteAccount      = prefs.getBool('canDeleteAccount') ?? true;
+
+    final userId = _currentUserId;
+    if (userId == null) {
+      // userId가 없으면 세션 무효
+      await logout();
+      return;
+    }
+
+    final isAdminAccount = _adminAccounts.containsKey(userId);
+
+    if (isAdminAccount) {
+      // 관리자 계정은 하드코딩 데이터로 복원
+      // Firebase Auth 세션이 남아있으면 제거 (permission-denied 방지)
+      if (_auth.currentUser != null) {
+        await _auth.signOut();
+      }
+      final account = _adminAccounts[userId]!;
+      _currentUserName       = account['name'] as String;
+      _currentUserPermission = account['permissions'] as String;
+      _canDeleteAccount      = account['can_delete_account'] as bool;
+      _isLoggedIn            = true;
+      notifyListeners();
+      return;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 일반 Firebase 유저:
+    // 1) Firebase Auth 세션이 살아있지 않으면 Firestore Security Rules 때문에
+    //    getUser() 가 Permission Denied 가 될 수 있음 → 먼저 Auth 상태 확인
+    // 2) Firestore에서 최신 이름·권한을 항상 가져와 덮어씀
+    // ────────────────────────────────────────────────────────────────────────
+    try {
+      // Firebase Auth persistence 는 기본 LOCAL → 앱 재시작 후에도 currentUser 복원됨.
+      // currentUser 가 null 이면 세션이 만료된 것이므로 로그아웃 처리.
+      final firebaseUser = _auth.currentUser;
+      if (firebaseUser == null) {
+        // Firebase Auth 세션 없음 → SharedPreferences 세션도 정리
+        if (kDebugMode) debugPrint('[AuthService] checkLoginStatus: Firebase Auth session expired, logging out');
+        await logout();
+        return;
+      }
+
+      // Firestore에서 최신 프로필 조회
+      final userData = await _fs.getUser(userId);
+      if (userData == null) {
+        // Firestore 에 유저 문서가 없는 경우 → 세션 정리
+        if (kDebugMode) debugPrint('[AuthService] checkLoginStatus: Firestore doc not found for $userId');
+        await logout();
+        return;
+      }
+
+      final nickname = userData['nickname'] as String?;
+      final name     = userData['name']     as String?;
+      final freshName = (nickname != null && nickname.isNotEmpty)
+          ? nickname
+          : (name != null && name.isNotEmpty)
+              ? name
+              : _currentUserName; // 최후 fallback: 기존 저장값
+
+      _currentUserName       = freshName ?? userId;
+      _currentUserPermission = (userData['permission'] as String?)?.isNotEmpty == true
+          ? userData['permission'] as String
+          : _currentUserPermission ?? 'user';
+      _isLoggedIn = true;
+
+      // 갱신된 값을 SharedPreferences에 덮어써서 다음 앱 재시작에도 반영
+      await prefs.setString('userName',       _currentUserName ?? '');
+      await prefs.setString('userPermission', _currentUserPermission ?? 'user');
+
+    } catch (e) {
+      // 네트워크 오류 등 → SharedPreferences 기존 값으로 계속 진행
+      if (kDebugMode) debugPrint('[AuthService] checkLoginStatus Firestore refresh failed: $e');
+      // userName 이 여전히 비어있거나 Unknown 이면 userId를 그대로 표시
+      if (_currentUserName == null || _currentUserName!.isEmpty || _currentUserName == 'Unknown') {
+        _currentUserName = userId;
+      }
+    }
+
     notifyListeners();
   }
 
