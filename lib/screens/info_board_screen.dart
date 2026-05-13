@@ -249,7 +249,7 @@ class _InfoBoardScreenState extends State<InfoBoardScreen>
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
+          preferredSize: const Size.fromHeight(62),
           child: Container(
             color: const Color(0xFF0038A8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -266,16 +266,21 @@ class _InfoBoardScreenState extends State<InfoBoardScreen>
               dividerColor: Colors.transparent,
               labelColor: const Color(0xFF0038A8),
               unselectedLabelColor: Colors.white.withValues(alpha: 0.85),
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
               tabs: _tabs.map((cat) => Tab(
-                child: Row(
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(_tabIcon(cat), size: 14),
-                    const SizedBox(width: 4),
-                    Text(cat.label, textAlign: TextAlign.center),
+                    const SizedBox(height: 3),
+                    Text(
+                      cat.label,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
                   ],
                 ),
               )).toList(),
