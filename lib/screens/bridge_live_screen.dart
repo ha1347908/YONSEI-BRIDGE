@@ -29,6 +29,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
   String _interimBuf = '';
   String _translated = '';
   bool _translating = false;
+  TranslationSource _translationSource = TranslationSource.none;
 
   Timer? _debounce;
   String _lastSrc = '';
@@ -150,15 +151,24 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     if (!mounted || src.trim().isEmpty) return;
     final lang = Provider.of<LanguageService>(context, listen: false);
     if (lang.currentLanguage == 'ko') {
-      setState(() => _translated = src);
+      setState(() {
+        _translated = src;
+        _translationSource = TranslationSource.none;
+      });
       return;
     }
     setState(() => _translating = true);
     try {
-      final r = await TranslationService.translate(
+      final r = await TranslationService.translateWithSource(
         text: src, targetLang: lang.currentLanguage, sourceLang: 'ko',
       );
-      if (mounted) setState(() { _translated = r; _translating = false; });
+      if (mounted) {
+        setState(() {
+          _translated = r.text;
+          _translationSource = r.source;
+          _translating = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _translating = false);
     }
@@ -169,7 +179,10 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
     _lastSrc = '';
     _finalBuf = '';
     _interimBuf = '';
-    setState(() => _translated = '');
+    setState(() {
+      _translated = '';
+      _translationSource = TranslationSource.none;
+    });
   }
 
   // ─── UI ─────────────────────────────────────────────────────
@@ -269,6 +282,7 @@ class _BridgeLiveScreenState extends State<BridgeLiveScreen>
                     textWeight: FontWeight.w600,
                     loading: _translating,
                     active: _active,
+                    translationSource: _translationSource,
                   ),
                 ),
 
@@ -374,6 +388,7 @@ class _AlwaysBox extends StatelessWidget {
   final FontWeight textWeight;
   final bool loading;
   final bool active;
+  final TranslationSource translationSource;
 
   const _AlwaysBox({
     required this.label,
@@ -388,6 +403,7 @@ class _AlwaysBox extends StatelessWidget {
     required this.textWeight,
     this.loading = false,
     required this.active,
+    this.translationSource = TranslationSource.none,
   });
 
   @override
@@ -425,6 +441,10 @@ class _AlwaysBox extends StatelessWidget {
               const SizedBox(width: 8),
               _Pulse(color: labelColor),
             ],
+            const Spacer(),
+            // API 출처 배지
+            if (translationSource != TranslationSource.none)
+              _TranslationBadge(source: translationSource),
           ]),
           const SizedBox(height: 12),
 
@@ -456,6 +476,38 @@ class _AlwaysBox extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── 번역 API 출처 배지 ──────────────────────────────────────────
+class _TranslationBadge extends StatelessWidget {
+  final TranslationSource source;
+  const _TranslationBadge({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (source) {
+      TranslationSource.myMemory  => ('MyMemory',        const Color(0xFF7EC8E3)),
+      TranslationSource.googleGtx => ('Google Translate', const Color(0xFF80C784)),
+      TranslationSource.failed    => ('번역 실패',         const Color(0xFFEF9A9A)),
+      TranslationSource.none      => ('',                 Colors.transparent),
+    };
+    if (label.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.api_rounded, size: 9, color: color),
+        const SizedBox(width: 3),
+        Text(label,
+            style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w600,
+                letterSpacing: 0.3)),
+      ]),
     );
   }
 }

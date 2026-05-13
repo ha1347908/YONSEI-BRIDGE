@@ -4,6 +4,27 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/post_model.dart';
 
+// ─────────────────────────────────────────────────────
+// 번역 API 출처 열거형 및 결과 클래스
+// ─────────────────────────────────────────────────────
+
+enum TranslationSource {
+  myMemory,   // MyMemory API
+  googleGtx,  // Google GTX 비공식 엔드포인트
+  failed,     // 모든 API 실패 → 원문 반환
+  none,       // 번역 불필요 (빈 텍스트 등)
+}
+
+class TranslationResult {
+  final String text;
+  final TranslationSource source;
+
+  const TranslationResult({
+    required this.text,
+    required this.source,
+  });
+}
+
 /// 번역 서비스
 /// - 1순위: MyMemory API (CORS 완전 지원, 무료, 인증 불필요)
 /// - 2순위: Google GTX 비공식 엔드포인트 (네이티브 앱 / 서버사이드 fallback)
@@ -41,47 +62,41 @@ class TranslationService {
   /// [text] → [targetLang] 번역. 실패 시 원문 반환.
   /// 웹(Flutter Web): MyMemory 사용 (CORS 지원)
   /// 네이티브: MyMemory → Google GTX 순서로 fallback
-  static Future<String> translate({
+  /// 번역 결과 (텍스트 + 사용된 API 출처)
+  static Future<TranslationResult> translateWithSource({
     required String text,
     required String targetLang,
     String sourceLang = 'auto',
   }) async {
-    if (text.trim().isEmpty) return text;
+    if (text.trim().isEmpty) return TranslationResult(text: text, source: TranslationSource.none);
 
-    // ① MyMemory API (CORS 완전 지원 → 웹/네이티브 모두 동작)
+    // ① MyMemory API (CORS 완전 지원)
     try {
       final src = sourceLang == 'auto' ? 'ko' : _toMyMemoryLang(sourceLang);
       final tgt = _toMyMemoryLang(targetLang);
-      final langPair = '$src|$tgt';
-
       final uri = Uri.parse(_myMemoryUrl).replace(queryParameters: {
         'q': text,
-        'langpair': langPair,
-        'de': 'yonseibridge@app.com', // 이메일 등록으로 일일 한도 5만자로 증가
+        'langpair': '$src|$tgt',
+        'de': 'yonseibridge@app.com',
       });
-
-      final res = await http.get(uri, headers: {
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 10));
-
+      final res = await http.get(uri, headers: {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final j = json.decode(res.body) as Map<String, dynamic>;
-        final responseStatus = j['responseStatus'];
         final translated = j['responseData']?['translatedText'] as String?;
-
-        if (responseStatus == 200 &&
+        if (j['responseStatus'] == 200 &&
             translated != null &&
             translated.isNotEmpty &&
             translated.toUpperCase() != text.toUpperCase()) {
-          if (kDebugMode) debugPrint('[Translation] MyMemory OK: $translated');
-          return translated;
+          if (kDebugMode) debugPrint('[Translation] MyMemory OK');
+          return TranslationResult(text: translated, source: TranslationSource.myMemory);
         }
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Translation] MyMemory error: $e');
     }
 
-    // ② Google GTX fallback (네이티브에서만 동작, 웹에서는 CORS로 실패)
+    // ② Google GTX fallback
     try {
       final uri = Uri.parse(_googleGtxUrl).replace(queryParameters: {
         'client': 'gtx',
@@ -96,8 +111,8 @@ class TranslationService {
         if (j != null && j[0] != null) {
           final result = (j[0] as List).map((item) => item[0] ?? '').join();
           if (result.isNotEmpty) {
-            if (kDebugMode) debugPrint('[Translation] Google GTX OK: $result');
-            return result;
+            if (kDebugMode) debugPrint('[Translation] Google GTX OK');
+            return TranslationResult(text: result, source: TranslationSource.googleGtx);
           }
         }
       }
@@ -105,7 +120,19 @@ class TranslationService {
       if (kDebugMode) debugPrint('[Translation] Google GTX error: $e');
     }
 
-    return text; // 모두 실패 시 원문 반환
+    return TranslationResult(text: text, source: TranslationSource.failed);
+  }
+
+  /// 기존 호환용 — 텍스트만 반환 (내부적으로 translateWithSource 호출)
+  static Future<String> translate({
+    required String text,
+    required String targetLang,
+    String sourceLang = 'auto',
+  }) async {
+    final result = await translateWithSource(
+      text: text, targetLang: targetLang, sourceLang: sourceLang,
+    );
+    return result.text;
   }
 
   /// 언어 자동 감지. 실패 시 'unknown' 반환.
@@ -118,10 +145,8 @@ class TranslationService {
         'langpair': 'autodetect|en',
       });
       final res = await http.get(uri).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final j = json.decode(res.body) as Map<String, dynamic>;
-        // MyMemory는 감지 언어를 직접 반환하지 않으므로 Google GTX로 fallback
-      }
+      // MyMemory는 감지 언어를 직접 반환하지 않으므로 Google GTX로 fallback
+      if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
     } catch (_) {}
 
     // Google GTX로 감지 시도 (네이티브에서만 동작)
