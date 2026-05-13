@@ -82,6 +82,9 @@ class Post {
   /// 번역 완료 여부 (백그라운드 번역 중 = false)
   final bool isTranslated;
 
+  /// 정보게시판 수동 정렬 순서 (낮을수록 위)
+  final int sortOrder;
+
   Post({
     required this.id,
     required this.title,
@@ -103,6 +106,7 @@ class Post {
     this.originalLanguage,
     Map<String, Map<String, String>>? translations,
     this.isTranslated = false,
+    this.sortOrder = 999999,
   }) : translations = translations ?? {};
 
   // ── 편의 getter ──────────────────────────────────────
@@ -144,6 +148,7 @@ class Post {
         (lang, map) => MapEntry(lang, Map<String, String>.from(map)),
       ),
       'is_translated': isTranslated,
+      'sort_order': sortOrder,
     };
   }
 
@@ -215,6 +220,7 @@ class Post {
       originalLanguage: map['original_language'] as String?,
       translations: parsedTrans,
       isTranslated: map['is_translated'] as bool? ?? false,
+      sortOrder: (map['sort_order'] as num?)?.toInt() ?? 999999,
       viewCount: (map['view_count'] as num?)?.toInt() ?? 0,
       saveCount: (map['save_count'] as num?)?.toInt() ?? 0,
       commentCount: (map['comment_count'] as num?)?.toInt() ?? 0,
@@ -244,6 +250,7 @@ class Post {
       originalLanguage: originalLanguage,
       translations: newTranslations,
       isTranslated: translated,
+      sortOrder: sortOrder,
     );
   }
 }

@@ -222,6 +222,19 @@ class FirestoreService {
     });
   }
 
+  /// 정보게시판 게시글 순서 일괄 업데이트
+  /// [orders] = { postId: sortOrder, ... }
+  Future<void> updateInfoPostOrders(Map<String, int> orders) async {
+    final batch = _db.batch();
+    orders.forEach((postId, order) {
+      batch.update(postsCol.doc(postId), {
+        'sort_order': order,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+
   /// Increment view count.
   Future<void> incrementViewCount(String postId) async {
     await postsCol.doc(postId).update({
